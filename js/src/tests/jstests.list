@@ -929,6 +929,21 @@ skip script test262/built-ins/Temporal/ZonedDateTime/prototype/equals/argument-s
 skip script test262/built-ins/Temporal/ZonedDateTime/prototype/since/argument-string-limits.js
 skip script test262/built-ins/Temporal/ZonedDateTime/prototype/until/argument-string-limits.js
 
+# https://github.com/tc39/proposal-intl-era-monthcode/issues/15 and https://github.com/tc39/test262/pull/4467
+skip script test262/intl402/Temporal/PlainDate/prototype/weekOfYear/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/PlainDate/prototype/weekOfYear/non-iso-week-of-year.js
+skip script test262/intl402/Temporal/PlainDate/prototype/yearOfWeek/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/PlainDate/prototype/yearOfWeek/non-iso-week-of-year.js
+skip script test262/intl402/Temporal/PlainDateTime/prototype/weekOfYear/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/PlainDateTime/prototype/yearOfWeek/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/PlainDateTime/prototype/yearOfWeek/non-iso-week-of-year.js
+skip script test262/intl402/Temporal/PlainDateTime/prototype/weekOfYear/non-iso-week-of-year.js
+skip script test262/intl402/Temporal/ZonedDateTime/construct-non-utc-non-iso.js
+skip script test262/intl402/Temporal/ZonedDateTime/prototype/weekOfYear/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/ZonedDateTime/prototype/weekOfYear/non-iso-week-of-year.js
+skip script test262/intl402/Temporal/ZonedDateTime/prototype/yearOfWeek/gregory-iso-weekofyear.js
+skip script test262/intl402/Temporal/ZonedDateTime/prototype/yearOfWeek/non-iso-week-of-year.j
+
 # See Bug 1950425, skip tests for calendars disabled in release or beta
 skip-if(release_or_beta) script non262/Temporal/Intl/defaults.js
 skip-if(release_or_beta) script test262/staging/Intl402/Temporal/old/non-iso-calendars-islamic-umalqura.js
@@ -940,3 +955,9 @@ skip-if(release_or_beta) script test262/intl402/Temporal/PlainMonthDay/from/cons
 # Try re-enabling when Bug 1954138 or Bug 1955545 are fixed.
 skip script test262/staging/Intl402/Temporal/old/non-iso-calendars-islamic.js
 skip script test262/staging/Intl402/Temporal/old/non-iso-calendars-islamic-rgsa.js
+
+# https://github.com/tc39/proposal-intl-era-monthcode/issues/23. ICU4X 2.0 doesn't have inverse type
+skip script test262/staging/Intl402/Temporal/old/non-iso-calendars-coptic.js
+
+# https://github.com/tc39/proposal-intl-era-monthcode/issues/4. ICU4X 2.0 doesn't have inverse type
+skip script test262/staging/Intl402/Temporal/old/non-iso-calendars-ethiopic.js

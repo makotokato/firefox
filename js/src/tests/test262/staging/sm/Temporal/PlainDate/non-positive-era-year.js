@@ -48,11 +48,7 @@ const tests = [
   {
     calendar: "japanese",
     era: "meiji",
-    // Start date is actually October 23, 1868.
-    //
-    // https://github.com/unicode-org/icu4x/issues/4892
-    // https://unicode-org.atlassian.net/browse/CLDR-11375
-    start: "1868-09-08",
+    start: "1868-10-23",
   },
   {
     calendar: "japanese",
@@ -65,6 +61,8 @@ const tests = [
     start: "0000-01-01",
   },
 
+  /*
+   * https://github.com/tc39/proposal-intl-era-monthcode/issues/23
   {
     calendar: "coptic",
     era: "coptic",
@@ -75,12 +73,16 @@ const tests = [
     era: "coptic-inverse",
     start: "0283-08-30",
   },
+  */
 
+  /*
+   * https://github.com/tc39/proposal-intl-era-monthcode/issues/4
   {
     calendar: "ethiopic",
     era: "ethiopic",
     start: "0008-08-27",
   },
+  */
 
   {
     calendar: "roc",

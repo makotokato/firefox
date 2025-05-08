@@ -21,6 +21,8 @@
 #include "builtin/temporal/Calendar.h"
 #include "builtin/temporal/Crash.h"
 
+#include "diplomat_runtime.hpp"
+
 namespace js::temporal {
 
 class MonthCode final {

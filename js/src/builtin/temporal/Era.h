@@ -144,21 +144,21 @@ constexpr auto& CalendarEras(CalendarId id) {
     case CalendarId::ISO8601:
     case CalendarId::Buddhist:
     case CalendarId::Chinese:
+    case CalendarId::Coptic:
     case CalendarId::Dangi:
+    case CalendarId::Ethiopian:
     case CalendarId::EthiopianAmeteAlem:
     case CalendarId::Hebrew:
     case CalendarId::Indian:
+    case CalendarId::Persian:
+      return eras::Standard;
+
+    case CalendarId::Gregorian:
     case CalendarId::Islamic:
     case CalendarId::IslamicCivil:
     case CalendarId::IslamicRGSA:
     case CalendarId::IslamicTabular:
     case CalendarId::IslamicUmmAlQura:
-    case CalendarId::Persian:
-      return eras::Standard;
-
-    case CalendarId::Coptic:
-    case CalendarId::Ethiopian:
-    case CalendarId::Gregorian:
     case CalendarId::ROC:
       return eras::StandardInverse;
 
@@ -177,7 +177,9 @@ constexpr auto& CalendarEraNames(CalendarId calendar, EraCode era) {
     case CalendarId::ISO8601:
     case CalendarId::Buddhist:
     case CalendarId::Chinese:
+    case CalendarId::Coptic:
     case CalendarId::Dangi:
+    case CalendarId::Ethiopian:
     case CalendarId::EthiopianAmeteAlem:
     case CalendarId::Hebrew:
     case CalendarId::Indian:
@@ -188,18 +190,6 @@ constexpr auto& CalendarEraNames(CalendarId calendar, EraCode era) {
     case CalendarId::IslamicUmmAlQura:
     case CalendarId::Persian:
       return eras::names::Empty;
-
-    case CalendarId::Coptic: {
-      MOZ_ASSERT(era == EraCode::Standard || era == EraCode::Inverse);
-      return era == EraCode::Standard ? eras::names::Coptic
-                                      : eras::names::CopticInverse;
-    }
-
-    case CalendarId::Ethiopian: {
-      MOZ_ASSERT(era == EraCode::Standard || era == EraCode::Inverse);
-      return era == EraCode::Standard ? eras::names::Ethiopian
-                                      : eras::names::EthiopianInverse;
-    }
 
     case CalendarId::Gregorian: {
       MOZ_ASSERT(era == EraCode::Standard || era == EraCode::Inverse);
@@ -248,7 +238,9 @@ constexpr bool CalendarEraStartsAtYearBoundary(CalendarId id) {
     case CalendarId::ISO8601:
     case CalendarId::Buddhist:
     case CalendarId::Chinese:
+    case CalendarId::Coptic:
     case CalendarId::Dangi:
+    case CalendarId::Ethiopian:
     case CalendarId::EthiopianAmeteAlem:
     case CalendarId::Hebrew:
     case CalendarId::Indian:
@@ -262,8 +254,6 @@ constexpr bool CalendarEraStartsAtYearBoundary(CalendarId id) {
 
     // Calendar system which use multiple eras, but each era starts at a year
     // boundary.
-    case CalendarId::Coptic:
-    case CalendarId::Ethiopian:
     case CalendarId::Gregorian:
     case CalendarId::ROC:
       return true;
