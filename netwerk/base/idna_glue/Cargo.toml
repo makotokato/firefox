@@ -5,7 +5,8 @@ edition = "2021"
 license = "MPL-2.0"
 
 [dependencies]
-idna = "1.0.2"
+idna = "1.0.3"
+idna_adapter = "1.2.1"
 arraystring = "0.3.0"
 percent-encoding = "2.3.1"
 nsstring = { path = "../../../xpcom/rust/nsstring" }
