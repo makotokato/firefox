@@ -3346,6 +3346,29 @@ void nsWindow::TryDwmResizeHack() {
       }));
 }
 
+class ScreenChangeObserver final : public nsIObserver {
+ public:
+  explicit ScreenChangeObserver(nsWindow* aWindow) : mWindow(aWindow) {}
+
+  NS_DECL_ISUPPORTS
+  NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
+                     const char16_t* aData) override {
+    if (!mWindow || mWindow->Destroyed()) {
+      return NS_OK;
+    }
+    if (mWindow->SizeMode() == nsSizeMode_Fullscreen) {
+      mWindow->InfallibleMakeFullScreen(true, nsBaseWidget::SavePreviousBounds::No);
+    }
+    return NS_OK;
+  }
+ private:
+   ~ScreenChangeObserver() = default;
+
+   RefPtr<nsWindow> mWindow;
+};
+
+NS_IMPL_ISUPPORTS(ScreenChangeObserver, nsIObserver)
+
 void nsWindow::OnFullscreenChanged(nsSizeMode aOldSizeMode, bool aFullScreen) {
   MOZ_ASSERT((aOldSizeMode != nsSizeMode_Fullscreen) == aFullScreen);
 
@@ -3369,6 +3392,20 @@ void nsWindow::OnFullscreenChanged(nsSizeMode aOldSizeMode, bool aFullScreen) {
 
   // Possibly notify the taskbar that we have changed our fullscreen mode.
   TaskbarConcealer::OnFullscreenChanged(this, aFullScreen);
+
+  // Listen screen size is changed such as screen rotation.
+  // If window is fullscreen, we have to resize current window.
+  if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+    if (aFullScreen) {
+      if (!mScreenChangeObserver) {
+        mScreenChangeObserver = new ScreenChangeObserver(this);
+        obs->AddObserver(mScreenChangeObserver, "screen-information-changed", false);
+      }
+    } else if (mScreenChangeObserver) {
+      obs->RemoveObserver(mScreenChangeObserver, "screen-information-changed");
+      mScreenChangeObserver = nullptr;
+    }
+  }
 }
 
 nsresult nsWindow::MakeFullScreen(bool aFullScreen) {
@@ -6851,6 +6888,13 @@ void nsWindow::OnDestroy() {
 
   // Finalize panning feedback to possibly restore window displacement
   mGesture.PanFeedbackFinalize(mWnd, true);
+
+  if (mScreenChangeObserver) {
+    if (nsCOMPtr<nsIObserverService> obs = services::GetObserverService()) {
+      obs->RemoveObserver(mScreenChangeObserver, "screen-information-changed");
+    }
+    mScreenChangeObserver = nullptr;
+  }
 
   // Clear the main HWND.
   mWnd = nullptr;

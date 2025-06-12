@@ -718,7 +718,8 @@ void nsBaseWidget::PerformFullscreenTransition(FullscreenTransitionStage aStage,
 // Put the window into full-screen mode
 //
 //-------------------------------------------------------------------------
-void nsBaseWidget::InfallibleMakeFullScreen(bool aFullScreen) {
+void nsBaseWidget::InfallibleMakeFullScreen(
+    bool aFullScreen, SavePreviousBounds aSavePreviousBounds) {
 #define MOZ_FORMAT_RECT(fmtstr) "[" fmtstr "," fmtstr " " fmtstr "x" fmtstr "]"
 #define MOZ_SPLAT_RECT(rect) \
   (rect).X(), (rect).Y(), (rect).Width(), (rect).Height()
@@ -833,8 +834,12 @@ void nsBaseWidget::InfallibleMakeFullScreen(bool aFullScreen) {
   };
 
   if (aFullScreen) {
-    if (!mSavedBounds) {
-      mSavedBounds = Some(FullscreenSavedState());
+    if (aSavePreviousBounds == SavePreviousBounds::Yes) {
+      if (!mSavedBounds) {
+        mSavedBounds = Some(FullscreenSavedState());
+      }
+      // save current position
+      mSavedBounds->windowRect = GetScreenBounds() / GetDesktopToDeviceScale();
     }
     // save current position
     mSavedBounds->windowRect = GetScreenBounds() / GetDesktopToDeviceScale();
@@ -846,9 +851,11 @@ void nsBaseWidget::InfallibleMakeFullScreen(bool aFullScreen) {
 
     // Move to fill the screen.
     doReposition(screen->GetRectDisplayPix());
-    // Save off the new position. (This may differ from GetRectDisplayPix(), if
-    // the OS was unhappy with it. See bug 1786226.)
-    mSavedBounds->screenRect = GetScreenBounds() / GetDesktopToDeviceScale();
+    if (aSavePreviousBounds == SavePreviousBounds::Yes) {
+      // Save off the new position. (This may differ from GetRectDisplayPix(), if
+      // the OS was unhappy with it. See bug 1786226.)
+      mSavedBounds->screenRect = GetScreenBounds() / GetDesktopToDeviceScale();
+    }
   } else {
     if (!mSavedBounds) {
       // This should never happen, at present, since we don't make windows

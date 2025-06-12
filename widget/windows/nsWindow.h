@@ -923,6 +923,9 @@ class nsWindow final : public nsBaseWidget,
   friend class ContextMenuPreventer;
   bool mNeedsToPreventContextMenu = false;
 
+  friend class ScreenChangeObserver;
+  RefPtr<ScreenChangeObserver> mScreenChangeObserver;
+
   mozilla::UniquePtr<mozilla::widget::DirectManipulationOwner> mDmOwner;
 
   // Client rect for minimize, maximize and close buttons.

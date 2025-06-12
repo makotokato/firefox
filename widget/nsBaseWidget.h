@@ -197,7 +197,14 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   void CleanupFullscreenTransition() override {}
   already_AddRefed<Screen> GetWidgetScreen() override;
   nsresult MakeFullScreen(bool aFullScreen) override;
-  void InfallibleMakeFullScreen(bool aFullScreen);
+
+  enum class SavePreviousBounds {
+    Yes,
+    No
+  };
+  void InfallibleMakeFullScreen(
+      bool aFullScreen,
+      SavePreviousBounds SavePreviousBounds = SavePreviousBounds::Yes);
 
   LayersId GetLayersId() const override;
   WindowRenderer* GetWindowRenderer() override;
