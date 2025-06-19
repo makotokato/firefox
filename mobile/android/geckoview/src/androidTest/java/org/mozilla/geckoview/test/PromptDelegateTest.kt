@@ -5,6 +5,7 @@
 package org.mozilla.geckoview.test
 
 import android.view.KeyEvent
+import android.view.View
 import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
@@ -1329,5 +1330,357 @@ class PromptDelegateTest : BaseSessionTest(
                 containsString("NotAllowedError"),
             )
         }
+    }
+
+    private fun resetValidation() {
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').pattern = '';
+            document.getElementById('search').required = false;
+            document.getElementById('search').minLength = 0;
+            document.getElementById('search').maxLength = 100;
+            document.getElementById('search').value = '';
+            """.trimIndent(),
+        )
+    }
+
+    @Test fun showFormValidation() {
+        mainSession.loadTestPath(FORM_BLANK_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Value missing
+        var result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is value missing",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.VALUE_MISSING),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').required = true;
+            document.getElementById('search').value = '';
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Pattern mismatch
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is pattern mismatch",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.PATTERN_MISMATCH),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').pattern = '\d';
+            document.getElementById('search').value = 'foo';
+            document.querySelector('input[type=submit]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Custom error
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is custom error",
+                    prompt.validityState,
+                    equalTo(
+                        PromptDelegate.FormValidationPrompt.ValidityState.CUSTOM_ERROR or
+                            PromptDelegate.FormValidationPrompt.ValidityState.VALUE_MISSING,
+                    ),
+                )
+                assertThat("custom validity message", prompt.message, equalTo("foo"))
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').type = 'text';
+            document.getElementById('search').required = true;
+            document.getElementById('search').setCustomValidity('foo');
+            document.getElementById('search').value = '';
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Type mismatch
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is type mismatch",
+                    prompt.validityState,
+                    equalTo(
+                        PromptDelegate.FormValidationPrompt.ValidityState.TYPE_MISMATCH or
+                            PromptDelegate.FormValidationPrompt.ValidityState.PATTERN_MISMATCH,
+                    ),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').type = 'url';
+            document.getElementById('search').setCustomValidity('');
+            document.getElementById('search').value = 'foo';
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Step mismatch
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is step mismatch",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.STEP_MISMATCH),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').type = 'number';
+            document.getElementById('search').min = 10;
+            document.getElementById('search').max = 20;
+            document.getElementById('search').step = 2;
+            document.getElementById('search').value = "15";
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Range underflow
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is range underflow",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.RANGE_UNDERFLOW),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').value = "2";
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        resetValidation()
+
+        // Range overflow
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is range overflow",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.RANGE_OVERFLOW),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').value = "22";
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+    }
+
+    // too short and too long require user input.
+    @WithDisplay(width = 512, height = 512)
+    @Test
+    fun showFormValidationByUserInput() {
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        mainSession.loadTestPath(FORM_BLANK_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // too short
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').minLength = 10;
+            """.trimIndent(),
+        )
+
+        mainSession.evaluateJS("document.getElementById('search').focus()")
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        mainSession.pressKey(KeyEvent.KEYCODE_A)
+        mainSession.pressKey(KeyEvent.KEYCODE_B)
+        mainSession.pressKey(KeyEvent.KEYCODE_C)
+
+        var result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is too short",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.TOO_SHORT),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.querySelector('input[type="submit"]').click()
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+        mainSession.evaluateJS("document.getElementById('search').blur()")
+
+        // too long
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').minLength = 0;
+            document.getElementById('search').maxLength = 1;
+            """.trimIndent(),
+        )
+
+        mainSession.evaluateJS("document.getElementById('search').focus()")
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        mainSession.pressKey(KeyEvent.KEYCODE_D)
+        mainSession.pressKey(KeyEvent.KEYCODE_E)
+        mainSession.pressKey(KeyEvent.KEYCODE_F)
+
+        result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is too long",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.TOO_LONG),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.querySelector('input[type="submit"]').click()
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+    }
+
+    @Test fun dismissFormValidation() {
+        mainSession.loadTestPath(FORM_BLANK_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Value missing
+        val result = GeckoResult<PromptDelegate.PromptResponse>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat(
+                    "Validity type is value missing",
+                    prompt.validityState,
+                    equalTo(PromptDelegate.FormValidationPrompt.ValidityState.VALUE_MISSING),
+                )
+                result.complete(prompt.dismiss())
+                return result
+            }
+        })
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').required = true;
+            document.getElementById('search').value = '';
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+        sessionRule.waitForResult(result)
+
+        mainSession.evaluateJS(
+            """
+            document.getElementById('search').value = 'foo';
+            document.querySelector('input[type="submit"]').click();
+            """.trimIndent(),
+        )
+
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
+            @AssertCalled(count = 0)
+            override fun onFormValidationPrompt(
+                session: GeckoSession,
+                prompt: PromptDelegate.FormValidationPrompt,
+            ): GeckoResult<PromptDelegate.PromptResponse>? {
+                return GeckoResult.fromValue(prompt.dismiss())
+            }
+        })
+
+        sessionRule.waitUntilCalled(NavigationDelegate::class, "onNewSession")
     }
 }

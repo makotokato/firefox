@@ -13,6 +13,13 @@ exclude: true
 
 ⚠️  breaking change and deprecation notices
 
+## v145
+- Added [`FormValidationPrompt`][143.1] to support [`Client-side form validation`][143.2]
+  ([bug 1510450]({{bugzilla}}1510450))
+
+[145.1]: {{javadoc_uri}}/GeckoSession.PromptDelegate.FormValidationPrompt.html
+[145.2]: https://developer.mozilla.org/en-US/docs/Learn/Forms/Form_validation
+
 ## v144
 - Added [`GeckoSession.flushSessionState()`][144.1] to immediately notify the registered [`GeckoSession.ProgressDelegate`][144.2] and [`GeckoSession.HistoryDelegate`][144.3] of the current session state.
 - Added [`GeckoRuntimeSettings.getIsolatedProcessEnabled`][144.4] and [`GeckoRuntimeSettings.Builder.isolatedProcessEnabled`][144.5] to control whether content service runs on isolated process or not.

@@ -34,6 +34,7 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.ColorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.DateTimePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.FilePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.FolderUploadPrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.FormValidationPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.AccountSelectorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.PrivacyPolicyPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.ProviderSelectorPrompt;
@@ -435,6 +436,26 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     }
   }
 
+  private static final class FormValidationHandler implements PromptHandler<FormValidationPrompt> {
+    @Override
+    public FormValidationPrompt newPrompt(final GeckoBundle info, final Observer observer) {
+      return new FormValidationPrompt(
+          info.getString("id"),
+          info.getString("message"),
+          info.getInt("validityState"),
+          info.getRectF("screenRect"),
+          observer);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final FormValidationPrompt prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onFormValidationPrompt(session, prompt);
+    }
+  }
+
   private static final class PopupHandler implements PromptHandler<PopupPrompt> {
     @Override
     public PopupPrompt newPrompt(final GeckoBundle info, final Observer observer) {
@@ -785,6 +806,7 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     sPromptHandlers.register(new DateTimeHandler(), "datetime");
     sPromptHandlers.register(new FileHandler(), "file");
     sPromptHandlers.register(new FolderUploadHandler(), "folderUpload");
+    sPromptHandlers.register(new FormValidationHandler(), "formValidation");
     sPromptHandlers.register(new PopupHandler(), "popup");
     sPromptHandlers.register(new RepostHandler(), "repost");
     sPromptHandlers.register(new ShareHandler(), "share");

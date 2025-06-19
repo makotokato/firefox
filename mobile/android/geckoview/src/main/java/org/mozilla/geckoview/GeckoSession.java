@@ -6057,6 +6057,107 @@ public class GeckoSession {
       }
     }
 
+    /**
+     * FormValidationPrompt contains the information necessary to represent a invalid reason
+     * message.
+     */
+    public class FormValidationPrompt extends BasePrompt {
+      /**
+       * ValidityStateFlag is the flag for ValidityState. See <a
+       * href="https://developer.mozilla.org/en-US/docs/Web/API/ValidityState">ValidityState</a>
+       */
+      @Retention(RetentionPolicy.SOURCE)
+      @IntDef(
+          flag = true,
+          value = {
+            ValidityState.VALUE_MISSING,
+            ValidityState.TYPE_MISMATCH,
+            ValidityState.PATTERN_MISMATCH,
+            ValidityState.TOO_LONG,
+            ValidityState.TOO_SHORT,
+            ValidityState.RANGE_UNDERFLOW,
+            ValidityState.RANGE_OVERFLOW,
+            ValidityState.STEP_MISMATCH,
+            ValidityState.BAD_INPUT,
+            ValidityState.CUSTOM_ERROR,
+          })
+      public @interface ValidityStateFlag {}
+
+      // This value matches with ValidityStateType in dom/html/nsIConstraintValidation.h
+
+      /**
+       * ValidityState is the flag for ValidityState. See <a
+       * href="https://developer.mozilla.org/en-US/docs/Web/API/ValidityState">ValidityState</a>
+       */
+      public static class ValidityState {
+        /** Same as ValidityState.valueMissing */
+        public static final int VALUE_MISSING = 1 << 0;
+
+        /** Same as ValidityState.typeMismatch */
+        public static final int TYPE_MISMATCH = 1 << 1;
+
+        /** Same as ValidityState.patternMismatch */
+        public static final int PATTERN_MISMATCH = 1 << 2;
+
+        /** Same as ValidityState.tooLong */
+        public static final int TOO_LONG = 1 << 3;
+
+        /** Same as ValidityState.tooShort */
+        public static final int TOO_SHORT = 1 << 4;
+
+        /** Same as ValidityState.rangeUnderflow */
+        public static final int RANGE_UNDERFLOW = 1 << 5;
+
+        /** Same as ValidityState.rangeOverflow */
+        public static final int RANGE_OVERFLOW = 1 << 6;
+
+        /** Same as ValidityState.stepMismatch */
+        public static final int STEP_MISMATCH = 1 << 7;
+
+        /** Same as ValidityState.badInput */
+        public static final int BAD_INPUT = 1 << 8;
+
+        /** Same as ValidityState.customError */
+        public static final int CUSTOM_ERROR = 1 << 9;
+
+        /** Empty constructor for tests */
+        protected ValidityState() {}
+      }
+
+      /** Validation message of form invalid data */
+      public final @NonNull String message;
+
+      /** {@link ValidityState} flags of form invalid data */
+      public final @ValidityStateFlag int validityState;
+
+      /** The bounds of the form control that is validation error in screen coordinates. */
+      public final @NonNull Rect screenRect;
+
+      /**
+       * FormValidationPrompt constructor.
+       *
+       * @param id The prompt id.
+       * @param message The validity message.
+       * @param validityState The flag for ValidityState.
+       * @param screenRect The element rectangle of validated error
+       * @param observer An observer for the completion of this prompt.
+       */
+      protected FormValidationPrompt(
+          @NonNull final String id,
+          @NonNull final String message,
+          @ValidityStateFlag final int validityState,
+          @Nullable final RectF screenRect,
+          @NonNull final Observer observer) {
+        super(id, null, observer);
+        this.message = message;
+        this.validityState = validityState;
+        this.screenRect = new Rect();
+        if (screenRect != null) {
+          screenRect.roundOut(this.screenRect);
+        }
+      }
+    }
+
     /** PopupPrompt contains the information necessary to represent a popup blocking request. */
     class PopupPrompt extends BasePrompt {
       /** The target URI for the popup; may be null. */
@@ -6412,6 +6513,24 @@ public class GeckoSession {
     @UiThread
     default @Nullable GeckoResult<PromptResponse> onFilePrompt(
         @NonNull final GeckoSession session, @NonNull final FilePrompt prompt) {
+      return null;
+    }
+
+    /**
+     * Display a form validation message.
+     *
+     * <p>See <a
+     * href="https://developer.mozilla.org/en-US/docs/Learn/Forms/Form_validation">Client-side form
+     * validation</a>.
+     *
+     * @param session GeckoSession that triggered the prompt.
+     * @param prompt The {@link FormValidationPrompt} that describes the prompt.
+     * @return A {@link GeckoResult} resolving to a {@link PromptResponse} which includes all
+     *     necessary information to resolve the prompt.
+     */
+    @UiThread
+    default @Nullable GeckoResult<PromptResponse> onFormValidationPrompt(
+        @NonNull final GeckoSession session, @NonNull final FormValidationPrompt prompt) {
       return null;
     }
 

@@ -78,6 +78,10 @@ const JSWINDOWACTORS = {
       esModuleURI: "resource:///actors/GeckoViewFormValidationChild.sys.mjs",
       events: {
         MozInvalidForm: {},
+        // Listening to ‘pageshow’ event is only relevant if an invalid form
+        // popup was open, so don't create the actor when fired.
+        pageshow: { createActor: false },
+        mozvisualscroll: { mozSystemGroup: true },
       },
     },
     allFrames: true,

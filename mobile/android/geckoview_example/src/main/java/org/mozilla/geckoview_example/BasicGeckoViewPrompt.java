@@ -1260,4 +1260,10 @@ final class BasicGeckoViewPrompt implements GeckoSession.PromptDelegate {
       final GeckoSession session, final PopupPrompt prompt) {
     return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.ALLOW));
   }
+
+  @Override
+  public GeckoResult<PromptResponse> onFormValidationPrompt(
+      final GeckoSession session, final FormValidationPrompt prompt) {
+    return FormValidationPopup.onFormValidationPrompt(session, prompt);
+  }
 }
