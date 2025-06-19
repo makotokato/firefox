@@ -72,6 +72,9 @@ with Files("Finder*.sys.mjs"):
 with Files("FormLikeFactory.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Password Manager")
 
+with Files("FormValidationUtils.sys.mjs"):
+    BUG_COMPONENT = ("Toolkit", "General")
+
 with Files("IndexedDB.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Async Tooling")
 
@@ -175,6 +178,7 @@ EXTRA_JS_MODULES += [
     "FinderSound.sys.mjs",
     "FirstStartup.sys.mjs",
     "FormLikeFactory.sys.mjs",
+    "FormValidationUtils.sys.mjs",
     "Geometry.sys.mjs",
     "HiddenFrame.sys.mjs",
     "IgnoreLists.sys.mjs",

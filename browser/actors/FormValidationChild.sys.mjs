@@ -9,6 +9,12 @@
 
 import { LayoutUtils } from "resource://gre/modules/LayoutUtils.sys.mjs";
 
+const lazy = {};
+
+ChromeUtils.defineESModuleGetters(lazy, {
+  FormValidationUtils: "resource://gre/modules/FormValidationUtils.sys.mjs",
+});
+
 export class FormValidationChild extends JSWindowActorChild {
   constructor() {
     super();
@@ -47,65 +53,36 @@ export class FormValidationChild extends JSWindowActorChild {
 
   notifyInvalidSubmit(aInvalidElements) {
     // Show a validation message on the first focusable element.
-    for (let element of aInvalidElements) {
-      // Insure that this is the FormSubmitObserver associated with the
-      // element / window this notification is about.
-      if (this.contentWindow != element.ownerGlobal.document.defaultView) {
-        return;
-      }
-
-      if (
-        !(
-          ChromeUtils.getClassName(element) === "HTMLInputElement" ||
-          ChromeUtils.getClassName(element) === "HTMLTextAreaElement" ||
-          ChromeUtils.getClassName(element) === "HTMLSelectElement" ||
-          ChromeUtils.getClassName(element) === "HTMLButtonElement" ||
-          element.isFormAssociatedCustomElement
-        )
-      ) {
-        continue;
-      }
-
-      let validationMessage = element.isFormAssociatedCustomElement
-        ? element.internals.validationMessage
-        : element.validationMessage;
-
-      if (element.isFormAssociatedCustomElement) {
-        // For element that are form-associated custom elements, user agents
-        // should use their validation anchor instead.
-        // It is not clear how constraint validation should work for FACE in
-        // spec if the validation anchor is null, see
-        // https://github.com/whatwg/html/issues/10155. Blink seems fallback to
-        // FACE itself when validation anchor is null, which looks reasonable.
-        element = element.internals.validationAnchor || element;
-      }
-
-      if (!element || !Services.focus.elementIsFocusable(element, 0)) {
-        continue;
-      }
-
-      // Update validation message before showing notification
-      this._validationMessage = validationMessage;
-
-      // Don't connect up to the same element more than once.
-      if (this._element == element) {
-        this._showPopup(element);
-        break;
-      }
-      this._element = element;
-
-      element.focus();
-
-      // Watch for input changes which may change the validation message.
-      element.addEventListener("input", this);
-
-      // Watch for focus changes so we can disconnect our listeners and
-      // hide the popup.
-      element.addEventListener("blur", this);
-
-      this._showPopup(element);
-      break;
+    const info = lazy.FormValidationUtils.getFirstValidationInformation(
+      aInvalidElements,
+      this.contentWindow
+    );
+    if (!info) {
+      return;
     }
+    const { element, validationMessage } = info;
+
+    // Update validation message before showing notification
+    this._validationMessage = validationMessage;
+
+    // Don't connect up to the same element more than once.
+    if (this._element == element) {
+      this._showPopup(element);
+      return;
+    }
+    this._element = element;
+
+    element.focus();
+
+    // Watch for input changes which may change the validation message.
+    element.addEventListener("input", this);
+
+    // Watch for focus changes so we can disconnect our listeners and
+    // hide the popup.
+    element.addEventListener("blur", this);
+
+    this._showPopup(element);
+    break;
   }
 
   /*
