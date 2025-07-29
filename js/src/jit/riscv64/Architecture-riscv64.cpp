@@ -90,11 +90,7 @@ void FlushICache(void* code, size_t size) {
 #endif
 }
 
-bool CPUFlagsHaveBeenComputed() {
-  // TODO Add CPU flags support
-  // Flags were computed above.
-  return true;
-}
+bool CPUFlagsHaveBeenComputed() { return true; }
 
 }  // namespace jit
 }  // namespace js

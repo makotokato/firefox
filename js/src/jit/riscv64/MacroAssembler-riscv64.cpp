@@ -5899,6 +5899,15 @@ void MacroAssemblerRiscv64::CompareIsNanF64(Register rd, FPURegister cmp1,
 }
 
 void MacroAssemblerRiscv64::Clz32(Register rd, Register xx) {
+  if (HasZbbExtension()) {
+#if JS_CODEGEN_RISCV64
+    clzw(rd, xx);
+#else
+    clz(rd, xx);
+#endif
+    return;
+  }
+
   // 32 bit unsigned in lower word: count number of leading zeros.
   //  int n = 32;
   //  unsigned y;
@@ -6028,6 +6037,15 @@ void MacroAssemblerRiscv64::Clz64(Register rd, Register xx) {
 }
 #endif
 void MacroAssemblerRiscv64::Ctz32(Register rd, Register rs) {
+  if (HasZbbExtension()) {
+#if JS_CODEGEN_RISCV64
+    ctzw(rd, rs);
+#else
+    ctz(rd, rs);
+#endif
+    return;
+  }
+
   // Convert trailing zeroes to trailing ones, and bits to their left
   // to zeroes.
 
@@ -6051,6 +6069,11 @@ void MacroAssemblerRiscv64::Ctz32(Register rd, Register rs) {
 }
 #if JS_CODEGEN_RISCV64
 void MacroAssemblerRiscv64::Ctz64(Register rd, Register rs) {
+  if (HasZbbExtension()) {
+    ctz(rd, rs);
+    return;
+  }
+
   // Convert trailing zeroes to trailing ones, and bits to their left
   // to zeroes.
   {
@@ -6074,6 +6097,15 @@ void MacroAssemblerRiscv64::Ctz64(Register rd, Register rs) {
 #endif
 void MacroAssemblerRiscv64::Popcnt32(Register rd, Register rs,
                                      Register scratch) {
+  if (HasZbbExtension()) {
+#if JS_CODEGEN_RISCV64
+    cpopw(rd, rs);
+#else
+    cpop(rd, rs);
+#endif
+    return;
+  }
+
   MOZ_ASSERT(scratch != rs);
   MOZ_ASSERT(scratch != rd);
   // https://graphics.stanford.edu/~seander/bithacks.html#CountBitsSetParallel
@@ -6125,6 +6157,11 @@ void MacroAssemblerRiscv64::Popcnt32(Register rd, Register rs,
 #if JS_CODEGEN_RISCV64
 void MacroAssemblerRiscv64::Popcnt64(Register rd, Register rs,
                                      Register scratch) {
+  if (HasZbbExtension()) {
+    cpop(rd, rs);
+    return;
+  }
+
   MOZ_ASSERT(scratch != rs);
   MOZ_ASSERT(scratch != rd);
   // uint64_t B0 = 0x5555555555555555l;     // (T)~(T)0/3
@@ -6266,9 +6303,19 @@ void MacroAssemblerRiscv64::ma_fmovz(FloatFormat fmt, FloatRegister fd,
 
 void MacroAssemblerRiscv64::ByteSwap(Register rd, Register rs, int operand_size,
                                      Register scratch) {
+  MOZ_ASSERT(operand_size == 4 || operand_size == 8);
+#if JS_CODEGEN_RISCV64
+  if (HasZbbExtension()) {
+    rev8(rd, rs);
+    if (operand_size == 4) {
+      srai(rd, rd, 32);
+    }
+    return;
+  }
+#endif
+
   MOZ_ASSERT(scratch != rs);
   MOZ_ASSERT(scratch != rd);
-  MOZ_ASSERT(operand_size == 4 || operand_size == 8);
   if (operand_size == 4) {
     // Uint32_t x1 = 0x00FF00FF;
     // x0 = (x0 << 16 | x0 >> 16);
@@ -6435,6 +6482,18 @@ void MacroAssemblerRiscv64::BranchFalseF(Register rs, Label* target) {
 }
 
 void MacroAssemblerRiscv64::Ror(Register rd, Register rs, const Operand& rt) {
+  if (HasZbbExtension()) {
+    if (rt.is_reg()) {
+      rorw(rd, rs, rt.rm());
+      return;
+    }
+    int64_t ror_value = rt.immediate() % 32;
+    if (ror_value < 0) {
+      ror_value += 32;
+    }
+    roriw(rd, rs, ror_value);
+    return;
+  }
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
   BlockTrampolinePoolScope block_trampoline_pool(this, 8);
@@ -6460,6 +6519,18 @@ void MacroAssemblerRiscv64::Ror(Register rd, Register rs, const Operand& rt) {
 }
 
 void MacroAssemblerRiscv64::Dror(Register rd, Register rs, const Operand& rt) {
+  if (HasZbbExtension()) {
+    if (rt.is_reg()) {
+      ror(rd, rs, rt.rm());
+    } else {
+      int64_t dror_value = rt.immediate() % 64;
+      if (dror_value < 0) {
+        dror_value += 64;
+      }
+      rori(rd, rs, dror_value);
+    }
+    return;
+  }
   UseScratchRegisterScope temps(this);
   Register scratch = temps.Acquire();
   BlockTrampolinePoolScope block_trampoline_pool(this, 8);

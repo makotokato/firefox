@@ -111,6 +111,10 @@ bool jit::InitializeJit() {
   vixl::CPU::SetUp();
 #endif
 
+#ifdef JS_CODEGEN_RISCV64
+  RVCPUFeatures::Init();
+#endif
+
 #ifndef JS_CODEGEN_NONE
   MOZ_ASSERT(js::jit::CPUFlagsHaveBeenComputed());
 #endif

@@ -56,6 +56,7 @@
 #include "jit/riscv64/extension/base-assembler-riscv.h"
 #include "jit/riscv64/extension/base-riscv-i.h"
 #include "jit/riscv64/extension/extension-riscv-a.h"
+#include "jit/riscv64/extension/extension-riscv-b.h"
 #include "jit/riscv64/extension/extension-riscv-c.h"
 #include "jit/riscv64/extension/extension-riscv-d.h"
 #include "jit/riscv64/extension/extension-riscv-f.h"
@@ -71,6 +72,16 @@
 #include "wasm/WasmTypeDecls.h"
 namespace js {
 namespace jit {
+
+class RVCPUFeatures final {
+ public:
+  static void Init();
+
+  static bool HasZbbExtension() { return sZbbExtension; }
+
+ private:
+  static bool sZbbExtension;
+};
 
 struct ScratchFloat32Scope : public AutoFloatRegisterScope {
   explicit ScratchFloat32Scope(MacroAssembler& masm)
@@ -114,6 +125,7 @@ typedef js::jit::AssemblerBufferWithConstantPools<
 class Assembler : public AssemblerShared,
                   public AssemblerRISCVI,
                   public AssemblerRISCVA,
+                  public AssemblerRISCVB,
                   public AssemblerRISCVF,
                   public AssemblerRISCVD,
                   public AssemblerRISCVM,
@@ -468,6 +480,8 @@ class Assembler : public AssemblerShared,
     Instruction* inst = (Instruction*)instPtr;
     return Assembler::ExtractLoad64Value(inst);
   }
+
+  static bool HasZbbExtension() { return RVCPUFeatures::HasZbbExtension(); }
 
   static bool HasRoundInstruction(RoundingMode) { return false; }
 
