@@ -794,7 +794,7 @@ class InstructionGetters : public T {
 
   inline int Shamt() const {
     // Valid only for shift instructions (SLLI, SRLI, SRAI)
-    MOZ_ASSERT(((this->InstructionBits() & kBaseOpcodeMask) == OP_IMM &&
+    MOZ_ASSERT(((this->InstructionBits() & kBaseOpcodeMask) == OP_IMM ||
                 (this->InstructionBits() & kBaseOpcodeMask) == OP_IMM_32) &&
                (this->Funct3Value() == 0b001 || this->Funct3Value() == 0b101));
     // | 0A0000 | shamt | rs1 | funct3 | rd | opcode |
