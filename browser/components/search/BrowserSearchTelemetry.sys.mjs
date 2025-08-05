@@ -33,6 +33,7 @@ class BrowserSearchTelemetryHandler {
   KNOWN_SEARCH_SOURCES = new Map([
     ["abouthome", "about_home"],
     ["contextmenu", "contextmenu"],
+    ["contextmenu_visual", "contextmenu_visual"],
     ["newtab", "about_newtab"],
     ["searchbar", "searchbar"],
     ["system", "system"],
@@ -153,21 +154,24 @@ class BrowserSearchTelemetryHandler {
         return;
       }
 
-      const countIdPrefix = `${engine.telemetryId}.`;
-      const countIdSource = countIdPrefix + source;
+      let isContextMenuVisual = source == "contextmenu_visual";
+      if (!isContextMenuVisual) {
+        const countIdPrefix = `${engine.telemetryId}.`;
+        const countIdSource = countIdPrefix + source;
 
-      // NOTE: When removing the sap.deprecatedCounts telemetry, see the note
-      // above KNOWN_SEARCH_SOURCES.
-      if (
-        details.alias &&
-        engine.isConfigEngine &&
-        engine.aliases.includes(details.alias)
-      ) {
-        // This is a keyword search using a config engine.
-        // Record the source as "alias", not "urlbar".
-        Glean.sap.deprecatedCounts[countIdPrefix + "alias"].add();
-      } else {
-        Glean.sap.deprecatedCounts[countIdSource].add();
+        // NOTE: When removing the sap.deprecatedCounts telemetry, see the note
+        // above KNOWN_SEARCH_SOURCES.
+        if (
+          details.alias &&
+          engine.isConfigEngine &&
+          engine.aliases.includes(details.alias)
+        ) {
+          // This is a keyword search using a config engine.
+          // Record the source as "alias", not "urlbar".
+          Glean.sap.deprecatedCounts[countIdPrefix + "alias"].add();
+        } else {
+          Glean.sap.deprecatedCounts[countIdSource].add();
+        }
       }
 
       // When an engine is overridden by a third party, then we report the
@@ -179,7 +183,8 @@ class BrowserSearchTelemetryHandler {
       // empty string and not other values. We would have `engine.partnerCode`
       // return `undefined`, but the XPCOM interfaces force us to return an
       // empty string.
-      let reportPartnerCode = !isOverridden && engine.partnerCode !== "";
+      let reportPartnerCode =
+        !isOverridden && engine.partnerCode !== "" && !isContextMenuVisual;
 
       Glean.sap.counts.record({
         source: this.KNOWN_SEARCH_SOURCES.get(source),
@@ -240,6 +245,34 @@ class BrowserSearchTelemetryHandler {
       source,
       provider_id: engine.isConfigEngine ? engine.id : "other",
     });
+  }
+
+  /**
+   * Records an impression of a search access point.
+   *
+   * @param {XULBrowserElement} browser
+   *   The browser associated with the SAP.
+   * @param {nsISearchEngine|null} engine
+   *   The engine handling the search, or null if this doesn't apply to the SAP
+   *   (e.g., the engine isn't known or selected yet). The counter's label will
+   *   be `engine.id` if `engine` is a non-null, app-provided engine. Otherwise
+   *   the label will be "none".
+   * @param {string} source
+   *   The name of the SAP. See `KNOWN_SEARCH_SOURCES` for allowed values.
+   */
+  recordSapImpression(browser, engine, source) {
+    if (!this.shouldRecordSearchCount(browser)) {
+      return;
+    }
+    if (!this.KNOWN_SEARCH_SOURCES.has(source)) {
+      console.error("Unknown source for SAP impression:", source);
+      return;
+    }
+
+    let scalarSource = this.KNOWN_SEARCH_SOURCES.get(source);
+    let name = scalarSource.replace(/_([a-z])/g, (m, p) => p.toUpperCase());
+    let label = engine?.isConfigEngine ? engine.id : "none";
+    Glean.sapImpressionCounts[name][label].add(1);
   }
 
   /**

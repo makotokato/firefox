@@ -4444,12 +4444,12 @@ main section {
 .lists .select-wrapper moz-button {
   visibility: hidden;
 }
-.lists:hover .select-wrapper moz-button, .lists:focus-within .select-wrapper moz-button, .lists .select-wrapper panel-list[open] .select-wrapper moz-button {
+.lists:hover .select-wrapper moz-button, .lists:focus-within .select-wrapper moz-button,
+.lists .select-wrapper panel-list[open] .select-wrapper moz-button {
   visibility: visible;
 }
 .lists .edit-list {
-  border: 1px solid var(--border-color-deemphasized);
-  outline: none;
+  outline: var(--focus-outline);
 }
 .lists .add-task-container {
   margin-block: var(--space-small);
@@ -4516,33 +4516,7 @@ main section {
 }
 .lists .task-item input:checked ~ .task-label {
   color: var(--text-color-deemphasized);
-}
-.lists .task-item input:checked ~ .task-label::after {
-  content: "";
-  position: absolute;
-  inset-inline-start: var(--space-small);
-  inset-block-start: 50%;
-  width: 100%;
-  height: var(--space-xxsmall);
-  background-color: var(--newtab-text-primary-color);
-  transform: translateY(-50%);
-}
-.lists .task-item input:checked ~ .task-label.animate-strike::after {
-  width: 100%;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .lists .task-item input:checked ~ .task-label.animate-strike::after {
-    animation: strike 0.25s ease-out forwards;
-    width: 0%;
-  }
-}
-@keyframes strike {
-  from {
-    width: 0%;
-  }
-  to {
-    width: 100%;
-  }
+  text-decoration: line-through;
 }
 .lists .task-item moz-button {
   align-self: flex-start;
@@ -4573,6 +4547,31 @@ main section {
   padding-inline: var(--space-large);
   color: var(--text-color-deemphasized);
 }
+.lists .completed-task-wrapper summary {
+  list-style: none;
+}
+.lists .completed-task-wrapper summary .completed-title {
+  color: var(--text-color-deemphasized);
+  position: relative;
+}
+.lists .completed-task-wrapper summary .completed-title::after {
+  content: "";
+  -moz-context-properties: fill;
+  fill: var(--text-color-deemphasized);
+  background-image: url("chrome://global/skin/icons/arrow-right.svg");
+  height: var(--space-large);
+  width: var(--space-large);
+  position: absolute;
+  inset-inline-end: calc(-1 * var(--space-xlarge));
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}
+.lists .completed-task-wrapper summary .completed-title:dir(rtl)::after {
+  background-image: url("chrome://global/skin/icons/arrow-left.svg");
+}
+.lists .completed-task-wrapper[open] .completed-title::after {
+  background-image: url("chrome://global/skin/icons/arrow-down.svg");
+}
 
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -4597,38 +4596,6 @@ main section {
   margin-inline-end: var(--space-small);
 }
 
-.focus-timer-controls {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.focus-timer-controls > moz-button:last-child {
-  margin-inline-start: var(--space-xsmall);
-}
-
-.focus-timer-controls > moz-button::part(button) {
-  border-radius: 50%;
-  padding: calc(var(--space-large) + 0.5 * var(--space-xxsmall));
-}
-
-.focus-timer-input {
-  color: var(--text-color);
-  font-size: calc(2 * var(--font-size-xlarge));
-  font-weight: var(--font-weight-bold);
-  font-variant-numeric: tabular-nums;
-  width: 125px;
-  padding: 0;
-  margin-inline-end: var(--space-small);
-  border: none;
-  opacity: 1;
-  transition: opacity 0.8s ease, width 0.8s ease;
-}
-.focus-timer-input.hidden {
-  opacity: 0;
-  width: 0;
-}
-
 .progress-circle-wrapper {
   /* Colours for the main timer */
   --timer-red: var(--color-red-50);
@@ -4649,6 +4616,10 @@ main section {
   /* main timer colours */
   /* break timer colours */
   /* timer turns green when complete */
+}
+.progress-circle-wrapper.visible {
+  opacity: 1;
+  height: 162px;
 }
 .progress-circle-wrapper .progress-circle-background,
 .progress-circle-wrapper .progress-circle,
@@ -4708,11 +4679,41 @@ main section {
   justify-content: center;
   position: absolute;
   width: 100%;
+  z-index: 10;
 }
 
-.progress-circle-wrapper.visible {
+.set-timer-controls-wrapper {
+  display: flex;
+}
+.set-timer-controls-wrapper .set-timer-countdown {
+  font-size: calc(2 * var(--font-size-xlarge));
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  height: 100%;
+  margin-inline-end: var(--space-xlarge);
   opacity: 1;
-  height: 162px;
+  width: 125px;
+  transition: opacity 0.8s ease, width 0.8s ease;
+}
+.set-timer-controls-wrapper .set-timer-countdown.hidden {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+}
+.set-timer-controls-wrapper .focus-timer-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.set-timer-controls-wrapper .focus-timer-controls.timer-running {
+  margin-block-start: var(--space-medium);
+}
+.set-timer-controls-wrapper .focus-timer-controls > moz-button:last-child {
+  margin-inline-start: var(--space-medium);
+}
+.set-timer-controls-wrapper .focus-timer-controls > moz-button::part(button) {
+  border-radius: 50%;
+  padding: calc(var(--space-large) + 0.5 * var(--space-xxsmall));
 }
 
 .ds-onboarding-container,

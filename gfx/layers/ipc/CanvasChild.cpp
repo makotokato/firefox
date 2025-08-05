@@ -93,6 +93,11 @@ class RecorderHelpers final : public CanvasDrawEventRecorder::Helpers {
   const WeakPtr<CanvasChild> mCanvasChild;
 };
 
+// Limit the number of in-flight export surfaces
+static Atomic<uint32_t> sCurrentExportSurfaces(0);
+// Limit the memory used by in-flight export surfaces
+static Atomic<size_t> sCurrentExportSurfaceMemory(0);
+
 class SourceSurfaceCanvasRecording final : public gfx::SourceSurface {
  public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SourceSurfaceCanvasRecording, final)
@@ -164,9 +169,26 @@ class SourceSurfaceCanvasRecording final : public gfx::SourceSurface {
     return mRecordedSurface->ExtractSubrect(aRect);
   }
 
+  static size_t GetExportSurfaceSize(gfx::SourceSurface* aSurface) {
+    return ImageDataSerializer::ComputeRGBBufferSize(aSurface->GetSize(),
+                                                     aSurface->GetFormat());
+  }
+
   bool GetSurfaceDescriptor(SurfaceDescriptor& aDesc) final {
     static Atomic<uintptr_t> sNextExportID(0);
     if (!mExportID) {
+      if (++sCurrentExportSurfaces >
+          StaticPrefs::gfx_canvas_accelerated_max_export_surfaces()) {
+        --sCurrentExportSurfaces;
+        return false;
+      }
+      size_t bytes = GetExportSurfaceSize(mRecordedSurface);
+      if ((sCurrentExportSurfaceMemory += bytes) >
+          StaticPrefs::gfx_canvas_accelerated_max_export_surface_memory()) {
+        --sCurrentExportSurfaces;
+        sCurrentExportSurfaceMemory -= bytes;
+        return false;
+      }
       mExportID = gfx::ReferencePtr(++sNextExportID);
       mRecorder->RecordEvent(RecordedAddExportSurface(mExportID, this));
     }
@@ -197,6 +219,9 @@ class SourceSurfaceCanvasRecording final : public gfx::SourceSurface {
     aRecorder->RecordEvent(RecordedRemoveSurfaceAlias(aSurfaceAlias));
     if (aExportID) {
       aRecorder->RecordEvent(RecordedRemoveExportSurface(aExportID));
+      --sCurrentExportSurfaces;
+      size_t bytes = GetExportSurfaceSize(aAliasedSurface);
+      sCurrentExportSurfaceMemory -= bytes;
     }
     aAliasedSurface = nullptr;
     aCanvasChild = nullptr;

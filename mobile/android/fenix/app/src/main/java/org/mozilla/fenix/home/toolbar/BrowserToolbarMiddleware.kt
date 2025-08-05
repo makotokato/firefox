@@ -29,6 +29,7 @@ import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAct
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.NavigationActionsUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.PageActionsStartUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserDisplayToolbarAction.PageOriginUpdated
+import mozilla.components.compose.browser.toolbar.store.BrowserEditToolbarAction.SearchQueryUpdated
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarAction
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarAction.Init
 import mozilla.components.compose.browser.toolbar.store.BrowserToolbarAction.ToggleEditMode
@@ -61,6 +62,7 @@ import org.mozilla.fenix.components.UseCases
 import org.mozilla.fenix.components.appstate.AppAction.SearchAction.SearchStarted
 import org.mozilla.fenix.components.appstate.OrientationMode
 import org.mozilla.fenix.components.menu.MenuAccessPoint
+import org.mozilla.fenix.components.toolbar.BrowserToolbarEnvironment
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.home.HomeFragmentDirections
@@ -114,7 +116,7 @@ class BrowserToolbarMiddleware(
     private val tabManagementFeatureHelper: TabManagementFeatureHelper = DefaultTabManagementFeatureHelper,
 ) : Middleware<BrowserToolbarState, BrowserToolbarAction> {
     @VisibleForTesting
-    internal var environment: HomeToolbarEnvironment? = null
+    internal var environment: BrowserToolbarEnvironment? = null
     private var syncCurrentSearchEngineJob: Job? = null
     private var observeBrowserSearchStateJob: Job? = null
 
@@ -134,7 +136,7 @@ class BrowserToolbarMiddleware(
             is EnvironmentRehydrated -> {
                 next(action)
 
-                environment = action.environment as? HomeToolbarEnvironment
+                environment = action.environment as? BrowserToolbarEnvironment
 
                 if (context.state.mode == Mode.DISPLAY) {
                     observeSearchStateUpdates(context)
@@ -199,11 +201,11 @@ class BrowserToolbarMiddleware(
                 next(action)
             }
             is AddNewTab -> {
-                openNewTab(Normal)
+                openNewTab(context, Normal)
                 next(action)
             }
             is AddNewPrivateTab -> {
-                openNewTab(Private)
+                openNewTab(context, Private)
                 next(action)
             }
 
@@ -211,7 +213,7 @@ class BrowserToolbarMiddleware(
                 appStore.dispatch(SearchStarted())
             }
             is PasteFromClipboardClicked -> {
-                openNewTab(searchTerms = clipboard.text)
+                openNewTab(context, searchTerms = clipboard.text)
             }
             is LoadFromClipboardClicked -> {
                 runWithinEnvironment {
@@ -220,6 +222,7 @@ class BrowserToolbarMiddleware(
                             searchTermOrURL = it,
                             newTab = true,
                             private = browsingModeManager.mode == Private,
+                            searchEngine = reconcileSelectedEngine(),
                         )
                         navController.navigate(R.id.browserFragment)
                     } ?: run {
@@ -233,19 +236,14 @@ class BrowserToolbarMiddleware(
     }
 
     private fun openNewTab(
+        context: MiddlewareContext<BrowserToolbarState, BrowserToolbarAction>,
         browsingMode: BrowsingMode? = null,
         searchTerms: String? = null,
     ) {
         runWithinEnvironment {
             browsingMode?.let { browsingModeManager.mode = it }
-            navController.nav(
-                R.id.homeFragment,
-                NavGraphDirections.actionGlobalSearchDialog(
-                    sessionId = null,
-                    pastedText = searchTerms,
-                ),
-                BrowserAnimator.getToolbarNavOptions(context),
-            )
+            context.dispatch(SearchQueryUpdated(searchTerms ?: ""))
+            appStore.dispatch(SearchStarted())
         }
     }
 
@@ -266,8 +264,7 @@ class BrowserToolbarMiddleware(
                 .collect {
                     updateStartPageActions(
                         context = context,
-                        selectedSearchEngine = appStore.state.searchState.selectedSearchEngine?.searchEngine
-                            ?: it.search.selectedOrDefaultSearchEngine,
+                        selectedSearchEngine = reconcileSelectedEngine(),
                     )
                 }
         }
@@ -419,7 +416,13 @@ class BrowserToolbarMiddleware(
         }
     }
 
-    private inline fun runWithinEnvironment(block: HomeToolbarEnvironment.() -> Unit) = environment?.let { block(it) }
+    private inline fun runWithinEnvironment(
+        block: BrowserToolbarEnvironment.() -> Unit,
+    ) = environment?.let { block(it) }
+
+    private fun reconcileSelectedEngine(): SearchEngine? =
+        appStore.state.searchState.selectedSearchEngine?.searchEngine
+            ?: browserStore.state.search.selectedOrDefaultSearchEngine
 
     @VisibleForTesting
     internal enum class HomeToolbarAction {

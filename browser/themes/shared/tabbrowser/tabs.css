@@ -16,6 +16,8 @@
   }
   --tab-group-label-height: max(1.5em, var(--tab-min-height) - 14px);
   --tab-group-label-padding: 4px;
+  --tab-group-label-highlight-thickness: 3px;
+  --tab-group-label-animation-duration: 150ms;
   --tab-group-line-thickness: 2px;
   --tab-group-line-toolbar-border-distance: 1px;
   /* Collapsed tabs should be square, so set width to match the min height */
@@ -865,13 +867,15 @@
     }
   }
 
-  #tabbrowser-tabs[movingtab-createGroup] & {
+  #tabbrowser-tabs[movingtab] & {
     transition:
       background-color 50ms ease,
       color 50ms ease,
       outline-color 50ms ease;
+  }
 
-    &[dragover-createGroup] {
+  #tabbrowser-tabs[movingtab-group] & {
+    &[dragover-groupTarget] {
       background-color: light-dark(var(--dragover-tab-group-color-pale), var(--dragover-tab-group-color));
       color: light-dark(var(--dragover-tab-group-color), var(--dragover-tab-group-color-pale));
       outline-color: light-dark(var(--dragover-tab-group-color), var(--dragover-tab-group-color-pale));
@@ -947,11 +951,16 @@
 }
 
 #pinned-drop-indicator {
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   color: var(--color-accent-primary);
+
+  @media not (prefers-reduced-motion) {
+    transition-duration: 0.25s;
+    transition-timing-function: ease-in-out;
+  }
 
   &[visible] {
     display: flex;
@@ -973,18 +982,17 @@
 }
 
 #tabbrowser-tabs[orient="vertical"] > #pinned-drop-indicator {
-  /* We need to explicitly set height to 0 to ensure the animation runs*/
-  height: 0;
-
-  @media not (prefers-reduced-motion) {
-    transition: height 0.25s ease-in-out;
-  }
+  transition-property: height;
 
   &[visible] {
     height: 70px;
     width: calc(100% - 2 * var(--tab-inner-inline-margin));
     gap: var(--space-small);
-    margin: var(--space-small) var(--tab-inner-inline-margin);
+    margin: var(--space-small) var(--tab-inner-inline-margin) 0;
+
+    @starting-style {
+      height: 0;
+    }
 
     > #pinned-drop-indicator-text {
       display: inline;
@@ -1004,12 +1012,7 @@
 }
 
 #tabbrowser-tabs[orient="horizontal"] > #pinned-drop-indicator {
-  /* We need to explicitly set width to 0 to ensure the animation runs*/
-  width: 0;
-
-  @media not (prefers-reduced-motion) {
-    transition: width 0.25s ease-in-out;
-  }
+  transition-property: width;
 
   &[visible] {
     margin-inline: var(--space-small);
@@ -1018,6 +1021,10 @@
     width: calc(2 * var(--size-item-large));
     height: var(--tab-min-height);
     padding-inline-start: var(--space-small);
+
+    @starting-style {
+      width: 0;
+    }
 
     > #pinned-drop-indicator-text {
       display: none;
@@ -1084,13 +1091,13 @@
   }
 
   /* prettier-ignore */
-  #tabbrowser-tabs[movingtab]:not([movingtab-createGroup],[movingtab-ungroup]) .tabbrowser-tab:is(:active,[multiselected]) > .tab-stack > .tab-background > & {
+  #tabbrowser-tabs[movingtab]:not([movingtab-group],[movingtab-ungroup]) .tabbrowser-tab:is(:active,[multiselected]) > .tab-stack > .tab-background > & {
     display: flex;
     background-color: light-dark(var(--dragover-tab-group-color), var(--dragover-tab-group-color-invert));
     border-radius: 1px;
   }
 
-  #tabbrowser-tabs:is([movingtab-createGroup], [movingtab-ungroup]) &:is([selected], [multiselected]) {
+  #tabbrowser-tabs:is([movingtab-group], [movingtab-ungroup]) &:is([selected], [multiselected]) {
     display: none;
   }
 }
@@ -1104,6 +1111,7 @@ tab-group {
 
   --tab-group-line-color: light-dark(var(--tab-group-color), var(--tab-group-color-invert));
 
+  #tabbrowser-tabs[orient="horizontal"] &[movingtabgroup][collapsed] > .tabbrowser-tab[visuallyselected],
   #tabbrowser-tabs[orient="horizontal"] &[collapsed] > .tabbrowser-tab:not([visuallyselected]) {
     min-width: 0 !important;
     max-width: 0 !important;
@@ -1111,6 +1119,7 @@ tab-group {
     overflow-clip-margin: 0;
   }
 
+  #tabbrowser-tabs[orient="vertical"] &[movingtabgroup][collapsed] > .tabbrowser-tab[visuallyselected],
   #tabbrowser-tabs[orient="vertical"] &[collapsed] > .tabbrowser-tab:not([visuallyselected]) {
     display: none;
   }
@@ -1124,7 +1133,7 @@ tab-group {
 
 #tabbrowser-tabs[orient="vertical"][expanded] {
   tab-group > :is(.tab-group-label-container, .tabbrowser-tab),
-  &[movingtab][movingtab-addToGroup]:not([movingtab-createGroup], [movingtab-ungroup]) .tabbrowser-tab:is(:active, [multiselected]) {
+  &[movingtab][movingtab-addToGroup]:not([movingtab-group], [movingtab-ungroup]) .tabbrowser-tab:is(:active, [multiselected]) {
     margin-inline-start: var(--space-medium);
   }
 }
@@ -1184,14 +1193,16 @@ tab-group {
     }
   }
 
-  #tabbrowser-tabs[orient="horizontal"] tab-group:is(:not([collapsed]), [hasactivetab]) > &::after {
+  #tabbrowser-tabs[orient="horizontal"] tab-group:not([collapsed]) > &::after,
+  #tabbrowser-tabs[orient="horizontal"] tab-group[collapsed][hasactivetab]:not([movingtabgroup]) > &::after {
     height: var(--tab-group-line-thickness);
     inset: auto 0 var(--tab-group-line-toolbar-border-distance);
     border-start-start-radius: 1px;
     border-end-start-radius: 1px;
   }
 
-  #tabbrowser-tabs[orient="vertical"] tab-group:is(:not([collapsed]), [hasactivetab]) > &::after {
+  #tabbrowser-tabs[orient="vertical"] tab-group:not([collapsed]) > &::after,
+  #tabbrowser-tabs[orient="vertical"] tab-group[collapsed][hasactivetab]:not([movingtabgroup]) > &::after {
     width: var(--tab-group-line-thickness);
     inset-block: 0;
     inset-inline: 2px auto;
@@ -1271,6 +1282,16 @@ tab-group {
   color: light-dark(var(--tab-group-color-pale), var(--tab-group-label-text-dark));
   background-color: light-dark(var(--tab-group-color), var(--tab-group-color-invert));
   margin: auto 0;
+
+  /* Animations for hovering a tab(s) over a collapsed tab group. Indicates to
+   * the user that they can drop the tab(s) into the tab group.
+   */
+  transition: box-shadow var(--tab-group-label-animation-duration);
+
+  &[dragover-groupTarget] {
+    box-shadow: color-mix(in oklab, light-dark(var(--tab-group-color), var(--tab-group-color-pale)) 30%, transparent) 0 0 0
+      var(--tab-group-label-highlight-thickness);
+  }
 
   tab-group[collapsed] > .tab-group-label-container > & {
     background-color: light-dark(var(--tab-group-color-pale), var(--tab-group-color));
@@ -1723,10 +1744,14 @@ tab-group {
   align-content: flex-start;
   grid-gap: var(--space-small);
 
-  &[overflow]::after {
+  &::after {
     content: "";
     border-bottom: var(--tabstrip-inner-border);
     margin-inline: var(--tab-inner-inline-margin);
+  }
+
+  &:not([overflow])::after {
+    border-color: transparent;
   }
 
   /* stylelint-disable-next-line media-query-no-invalid */
@@ -1735,7 +1760,7 @@ tab-group {
     pref is not set to "expand-on-hover" as opposed to when the "sidebar-expand-on-hover" attribute
     has not been added to root. There are certain scenarios when that attribute is temporarily
     removed from root such as when toggling the sidebar to expand with the toolbar button. */
-    &:not([expanded])[overflow]::after {
+    &:not([expanded])::after {
       border-color: transparent;
     }
   }

@@ -11,7 +11,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.navigation.NavController
-import androidx.navigation.NavOptions
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.mockk.every
 import io.mockk.mockk
@@ -83,6 +82,7 @@ import org.mozilla.fenix.components.appstate.OrientationMode.Portrait
 import org.mozilla.fenix.components.appstate.search.SearchState
 import org.mozilla.fenix.components.appstate.search.SelectedSearchEngine
 import org.mozilla.fenix.components.menu.MenuAccessPoint
+import org.mozilla.fenix.components.toolbar.BrowserToolbarEnvironment
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.nav
@@ -462,25 +462,11 @@ class BrowserToolbarMiddlewareTest {
         assertEqualsToolbarButton(expectedToolbarButton(0, false), tabCounterButton)
         val tabCounterMenuItems = (tabCounterButton.onLongClick as CombinedEventAndMenu).menu.items()
 
-        mockkStatic(Context::settings) {
-            mockkStatic(NavController::nav) {
-                every { testContext.settings().toolbarPosition } returns ToolbarPosition.TOP
+        toolbarStore.dispatch((tabCounterMenuItems[0] as BrowserToolbarMenuButton).onClick!!)
 
-                toolbarStore.dispatch((tabCounterMenuItems[0] as BrowserToolbarMenuButton).onClick!!)
-
-                assertEquals(Private, browsingModeManager.mode)
-                verify {
-                    navController.nav(
-                        R.id.homeFragment,
-                        NavGraphDirections.actionGlobalSearchDialog(sessionId = null),
-                        NavOptions.Builder()
-                            .setEnterAnim(R.anim.fade_in)
-                            .setExitAnim(R.anim.fade_out)
-                            .build(),
-                    )
-                }
-            }
-        }
+        assertEquals(Private, browsingModeManager.mode)
+        assertEquals("", toolbarStore.state.editState.query)
+        verify { appStore.dispatch(SearchStarted()) }
     }
 
     @Test
@@ -497,25 +483,11 @@ class BrowserToolbarMiddlewareTest {
         assertEqualsToolbarButton(expectedToolbarButton(0, true), tabCounterButton)
         val tabCounterMenuItems = (tabCounterButton.onLongClick as CombinedEventAndMenu).menu.items()
 
-        mockkStatic(Context::settings) {
-            mockkStatic(NavController::nav) {
-                every { testContext.settings().toolbarPosition } returns ToolbarPosition.TOP
+        toolbarStore.dispatch((tabCounterMenuItems[0] as BrowserToolbarMenuButton).onClick!!)
 
-                toolbarStore.dispatch((tabCounterMenuItems[0] as BrowserToolbarMenuButton).onClick!!)
-
-                assertEquals(Normal, browsingModeManager.mode)
-                verify {
-                    navController.nav(
-                        R.id.homeFragment,
-                        NavGraphDirections.actionGlobalSearchDialog(sessionId = null),
-                        NavOptions.Builder()
-                            .setEnterAnim(R.anim.fade_in)
-                            .setExitAnim(R.anim.fade_out)
-                            .build(),
-                    )
-                }
-            }
-        }
+        assertEquals(Normal, browsingModeManager.mode)
+        assertEquals("", toolbarStore.state.editState.query)
+        verify { appStore.dispatch(SearchStarted()) }
     }
 
     @Test
@@ -553,38 +525,20 @@ class BrowserToolbarMiddlewareTest {
     @Test
     fun `WHEN choosing to paste from clipboard THEN start a new search with the current clipboard text`() {
         val browsingModeManager = SimpleBrowsingModeManager(Normal)
-        val navController: NavController = mockk(relaxed = true)
         val clipboard = ClipboardHandler(testContext).also {
             it.text = "test"
         }
         val middleware = BrowserToolbarMiddleware(appStore, browserStore, clipboard, mockk())
         val toolbarStore = buildStore(
             middleware = middleware,
-            navController = navController,
+            navController = mockk(),
             browsingModeManager = browsingModeManager,
         )
 
-        mockkStatic(Context::settings) {
-            mockkStatic(NavController::nav) {
-                every { testContext.settings().toolbarPosition } returns ToolbarPosition.TOP
+        toolbarStore.dispatch(PasteFromClipboardClicked)
 
-                toolbarStore.dispatch(PasteFromClipboardClicked)
-
-                verify {
-                    navController.nav(
-                        R.id.homeFragment,
-                        NavGraphDirections.actionGlobalSearchDialog(
-                            sessionId = null,
-                            pastedText = "test",
-                        ),
-                        NavOptions.Builder()
-                            .setEnterAnim(R.anim.fade_in)
-                            .setExitAnim(R.anim.fade_out)
-                            .build(),
-                    )
-                }
-            }
-        }
+        assertEquals(clipboard.text, toolbarStore.state.editState.query)
+        verify { appStore.dispatch(SearchStarted()) }
     }
 
     @Test
@@ -599,6 +553,7 @@ class BrowserToolbarMiddlewareTest {
         val useCases: UseCases = mockk {
             every { fenixBrowserUseCases } returns browserUseCases
         }
+        val selectedSearchEngine = appStore.state.searchState.selectedSearchEngine?.searchEngine
         val middleware = BrowserToolbarMiddleware(appStore, browserStore, clipboard, useCases)
         val toolbarStore = buildStore(
             middleware = middleware,
@@ -606,22 +561,17 @@ class BrowserToolbarMiddlewareTest {
             browsingModeManager = browsingModeManager,
         )
 
-        mockkStatic(Context::settings) {
-            mockkStatic(NavController::nav) {
-                every { testContext.settings().toolbarPosition } returns ToolbarPosition.TOP
+        toolbarStore.dispatch(LoadFromClipboardClicked)
 
-                toolbarStore.dispatch(LoadFromClipboardClicked)
-
-                verify {
-                    browserUseCases.loadUrlOrSearch(
-                        searchTermOrURL = clipboardUrl,
-                        newTab = true,
-                        private = false,
-                    )
-                }
-                verify { navController.navigate(R.id.browserFragment) }
-            }
+        verify {
+            browserUseCases.loadUrlOrSearch(
+                searchTermOrURL = clipboardUrl,
+                newTab = true,
+                private = false,
+                searchEngine = selectedSearchEngine,
+            )
         }
+        verify { navController.navigate(R.id.browserFragment) }
     }
 
     @Test
@@ -729,7 +679,7 @@ class BrowserToolbarMiddlewareTest {
     ).also {
         it.dispatch(
             EnvironmentRehydrated(
-                HomeToolbarEnvironment(
+                BrowserToolbarEnvironment(
                     context = context,
                     viewLifecycleOwner = lifecycleOwner,
                     navController = navController,

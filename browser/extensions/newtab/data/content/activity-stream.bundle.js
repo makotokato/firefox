@@ -303,8 +303,10 @@ for (const type of [
   "WEBEXT_DISMISS",
   "WIDGETS_LISTS_CHANGE_SELECTED",
   "WIDGETS_LISTS_SET",
+  "WIDGETS_LISTS_SET_LOCAL",
   "WIDGETS_LISTS_SET_SELECTED",
   "WIDGETS_LISTS_UPDATE",
+  "WIDGETS_LISTS_UPDATE_LOCAL",
   "WIDGETS_TIMER_END",
   "WIDGETS_TIMER_PAUSE",
   "WIDGETS_TIMER_PLAY",
@@ -7871,13 +7873,8 @@ const INITIAL_STATE = {
       taskList: {
         label: "Task List",
         tasks: [],
+        completed: [],
       },
-    },
-    // Keeping this separate from `lists` so that it isn't rendered
-    // in the same way
-    completed: {
-      label: "Completed",
-      tasks: [],
     },
   },
   TimerWidget: {
@@ -11210,14 +11207,27 @@ const selectLayoutRender = ({ state = {}, prefs = {} }) => {
 
   const filterArray = [];
 
+  // Filter sections is Topsites are turned off
   if (!prefs["feeds.topsites"]) {
     filterArray.push("TopSites");
   }
 
+  // Filter sections is Widgets are turned off
+  // Note extra logic is required bc this feature can be enabled via Nimbus
+  const nimbusWidgetsEnabled = prefs.widgetsConfig?.enabled;
+  const widgetsEnabled = prefs["widgets.system.enabled"];
+  if (!nimbusWidgetsEnabled && !widgetsEnabled) {
+    filterArray.push("Widgets");
+  }
+
+  // Filter sections is Recommended Stories are turned off
   const pocketEnabled =
     prefs["feeds.section.topstories"] && prefs["feeds.system.topstories"];
   if (!pocketEnabled) {
-    filterArray.push(...DS_COMPONENTS);
+    filterArray.push(
+      // Bug 1980459 - Do not remove Widgets if DS is disabled
+      ...DS_COMPONENTS.filter(component => component !== "Widgets")
+    );
   }
 
   // function to determine amount of tiles shown per section per viewport
@@ -12293,6 +12303,10 @@ function CardSections({
 
 
 
+const taskType = {
+  IN_PROGRESS: "tasks",
+  COMPLETED: "completed"
+};
 function Lists({
   dispatch
 }) {
@@ -12303,8 +12317,6 @@ function Lists({
   } = listsData;
   const [newTask, setNewTask] = (0,external_React_namespaceObject.useState)("");
   const [isEditing, setIsEditing] = (0,external_React_namespaceObject.useState)(false);
-  // When making a new list, we need to wait to set editing to true
-  // until the redux store has been updated
   const [pendingNewList, setPendingNewList] = (0,external_React_namespaceObject.useState)(null);
   const inputRef = (0,external_React_namespaceObject.useRef)(null);
   const selectRef = (0,external_React_namespaceObject.useRef)(null);
@@ -12353,29 +12365,79 @@ function Lists({
       };
       dispatch(actionCreators.AlsoToMain({
         type: actionTypes.WIDGETS_LISTS_UPDATE,
-        data: updatedLists
+        data: {
+          lists: updatedLists
+        }
       }));
       setNewTask("");
     }
   }
-  function updateTask(updatedTask) {
-    const selectedTasks = lists[selected].tasks;
-    // find selected task and update completed property
-    const updatedTasks = selectedTasks.map(task => task.id === updatedTask.id ? updatedTask : task);
+  function updateTask(updatedTask, type) {
+    let localUpdatedTasks;
+    const selectedList = lists[selected];
+    const isCompletedType = type === taskType.COMPLETED;
+    const isNowCompleted = updatedTask.completed;
+
+    // If the task is in the completed array and is now unchecked
+    const shouldMoveToTasks = isCompletedType && !updatedTask.completed;
+
+    // If we're moving the task from tasks → completed (user checked it)
+    const shouldMoveToCompleted = !isCompletedType && isNowCompleted;
+    let newTasks = selectedList.tasks;
+    let newCompleted = selectedList.completed;
+
+    //  Move task from completed -> task
+    if (shouldMoveToTasks) {
+      newCompleted = selectedList.completed.filter(task => task.id !== updatedTask.id);
+      newTasks = [...selectedList.tasks, updatedTask];
+      // Move task to completed, but also create local version
+    } else if (shouldMoveToCompleted) {
+      newTasks = selectedList.tasks.filter(task => task.id !== updatedTask.id);
+      newCompleted = [...selectedList.completed, updatedTask];
+
+      // Keep a local version of tasks that still includes this item (to preserve UI in this tab)
+      localUpdatedTasks = selectedList.tasks.map(existingTask => existingTask.id === updatedTask.id ? updatedTask : existingTask);
+    } else {
+      const targetKey = isCompletedType ? "completed" : "tasks";
+      const updatedArray = selectedList[targetKey].map(task => task.id === updatedTask.id ? updatedTask : task);
+      // In-place update: toggle checkbox (but stay in same array or edit name)
+      if (targetKey === "tasks") {
+        newTasks = updatedArray;
+      } else {
+        newCompleted = updatedArray;
+      }
+    }
     const updatedLists = {
       ...lists,
       [selected]: {
-        ...lists[selected],
-        tasks: updatedTasks
+        ...selectedList,
+        tasks: newTasks,
+        completed: newCompleted
       }
     };
+
+    // local override: keep completed item out of the "completed" array
+    const localLists = {
+      ...lists,
+      [selected]: {
+        ...selectedList,
+        tasks: localUpdatedTasks || newTasks,
+        completed: newCompleted.filter(task => task.id !== updatedTask.id)
+      }
+    };
+
+    // Dispatch the update to main - will sync across tabs
+    // and apply local override to this tab only
     dispatch(actionCreators.AlsoToMain({
       type: actionTypes.WIDGETS_LISTS_UPDATE,
-      data: updatedLists
+      data: {
+        lists: updatedLists,
+        localLists
+      }
     }));
   }
-  function deleteTask(task) {
-    const selectedTasks = lists[selected].tasks;
+  function deleteTask(task, type) {
+    const selectedTasks = lists[selected][type];
     const updatedTasks = selectedTasks.filter(({
       id
     }) => id !== task.id);
@@ -12383,12 +12445,14 @@ function Lists({
       ...lists,
       [selected]: {
         ...lists[selected],
-        tasks: updatedTasks
+        [type]: updatedTasks
       }
     };
     dispatch(actionCreators.AlsoToMain({
       type: actionTypes.WIDGETS_LISTS_UPDATE,
-      data: updatedLists
+      data: {
+        lists: updatedLists
+      }
     }));
   }
   function handleKeyDown(e) {
@@ -12412,24 +12476,29 @@ function Lists({
       };
       dispatch(actionCreators.AlsoToMain({
         type: actionTypes.WIDGETS_LISTS_UPDATE,
-        data: updatedLists
+        data: {
+          lists: updatedLists
+        }
       }));
       setIsEditing(false);
     }
   }
-  async function handleCreateNewList() {
+  function handleCreateNewList() {
     const listUuid = crypto.randomUUID();
     const newLists = {
       ...lists,
       [listUuid]: {
         label: "New list",
-        tasks: []
+        tasks: [],
+        completed: []
       }
     };
-    await (0,external_ReactRedux_namespaceObject.batch)(() => {
+    (0,external_ReactRedux_namespaceObject.batch)(() => {
       dispatch(actionCreators.AlsoToMain({
         type: actionTypes.WIDGETS_LISTS_UPDATE,
-        data: newLists
+        data: {
+          lists: newLists
+        }
       }));
       dispatch(actionCreators.AlsoToMain({
         type: actionTypes.WIDGETS_LISTS_CHANGE_SELECTED,
@@ -12450,7 +12519,8 @@ function Lists({
         updatedLists = {
           [crypto.randomUUID()]: {
             label: "New list",
-            tasks: []
+            tasks: [],
+            completed: []
           }
         };
       }
@@ -12459,7 +12529,9 @@ function Lists({
       (0,external_ReactRedux_namespaceObject.batch)(() => {
         dispatch(actionCreators.AlsoToMain({
           type: actionTypes.WIDGETS_LISTS_UPDATE,
-          data: updatedLists
+          data: {
+            lists: updatedLists
+          }
         }));
         dispatch(actionCreators.AlsoToMain({
           type: actionTypes.WIDGETS_LISTS_CHANGE_SELECTED,
@@ -12515,36 +12587,44 @@ function Lists({
     maxLength: 100
   })), /*#__PURE__*/external_React_default().createElement("div", {
     className: "task-list-wrapper"
-  }, lists[selected]?.tasks.length >= 1 ? /*#__PURE__*/external_React_default().createElement("moz-reorderable-list", {
+  }, /*#__PURE__*/external_React_default().createElement("moz-reorderable-list", {
     itemSelector: "fieldset .task-item"
-  }, /*#__PURE__*/external_React_default().createElement("fieldset", null, lists[selected].tasks.map(task => /*#__PURE__*/external_React_default().createElement(ListItem, {
+  }, /*#__PURE__*/external_React_default().createElement("fieldset", null, lists[selected]?.tasks.length >= 1 ? lists[selected].tasks.map(task => /*#__PURE__*/external_React_default().createElement(ListItem, {
+    type: taskType.IN_PROGRESS,
     task: task,
     key: task.id,
     updateTask: updateTask,
     deleteTask: deleteTask,
     isValidUrl: isValidUrl
-  })))) : /*#__PURE__*/external_React_default().createElement("p", {
+  })) : /*#__PURE__*/external_React_default().createElement("p", {
     className: "empty-list-text"
-  }, "The list is empty. For now \uD83E\uDD8A"))) : null;
+  }, "The list is empty. For now \uD83E\uDD8A"), lists[selected]?.completed.length >= 1 && /*#__PURE__*/external_React_default().createElement("details", {
+    className: "completed-task-wrapper"
+  }, /*#__PURE__*/external_React_default().createElement("summary", null, /*#__PURE__*/external_React_default().createElement("span", {
+    className: "completed-title"
+  }, `Completed (${lists[selected]?.completed.length})`)), lists[selected]?.completed.map(completedTask => /*#__PURE__*/external_React_default().createElement(ListItem, {
+    key: completedTask.id,
+    type: taskType.COMPLETED,
+    task: completedTask,
+    deleteTask: deleteTask,
+    updateTask: updateTask
+  }))))))) : null;
 }
 function ListItem({
   task,
   updateTask,
   deleteTask,
-  isValidUrl
+  isValidUrl,
+  type
 }) {
-  const [shouldAnimate, setShouldAnimate] = (0,external_React_namespaceObject.useState)(false);
   const [isEditing, setIsEditing] = (0,external_React_namespaceObject.useState)(false);
+  const isCompleted = type === taskType.COMPLETED;
   function handleCheckboxChange(e) {
-    const {
-      checked
-    } = e.target;
     const updatedTask = {
       ...task,
       completed: e.target.checked
     };
-    updateTask(updatedTask);
-    setShouldAnimate(checked);
+    updateTask(updatedTask, type);
   }
   function handleSave(newValue) {
     const trimmedTask = newValue.trimEnd();
@@ -12553,10 +12633,24 @@ function ListItem({
         ...task,
         value: newValue,
         isUrl: isValidUrl(trimmedTask)
-      });
+      }, type);
       setIsEditing(false);
     }
   }
+  function handleDelete() {
+    deleteTask(task, type);
+  }
+  const taskLabel = task.isUrl ? /*#__PURE__*/external_React_default().createElement("a", {
+    href: task.value,
+    rel: "noopener noreferrer",
+    target: "_blank",
+    className: "task-label",
+    title: task.value
+  }, task.value) : /*#__PURE__*/external_React_default().createElement("span", {
+    className: "task-label",
+    title: task.value,
+    onClick: () => setIsEditing(true)
+  }, task.value);
   return /*#__PURE__*/external_React_default().createElement("div", {
     className: "task-item"
   }, /*#__PURE__*/external_React_default().createElement("div", {
@@ -12565,36 +12659,26 @@ function ListItem({
     type: "checkbox",
     onChange: handleCheckboxChange,
     checked: task.completed
-  }), /*#__PURE__*/external_React_default().createElement(EditableText, {
+  }), isCompleted ? taskLabel : /*#__PURE__*/external_React_default().createElement(EditableText, {
     isEditing: isEditing,
     setIsEditing: setIsEditing,
     value: task.value,
     onSave: handleSave,
     type: "task"
-  }, task.isUrl ? /*#__PURE__*/external_React_default().createElement("a", {
-    href: task.value,
-    rel: "noopener noreferrer",
-    target: "_blank",
-    className: `task-label ${task.completed && shouldAnimate ? "animate-strike" : ""}`,
-    title: task.value
-  }, task.value) : /*#__PURE__*/external_React_default().createElement("span", {
-    className: `task-label ${task.completed && shouldAnimate ? "animate-strike" : ""}`,
-    title: task.value,
-    onClick: () => setIsEditing(true)
-  }, task.value))), /*#__PURE__*/external_React_default().createElement("moz-button", {
+  }, taskLabel)), /*#__PURE__*/external_React_default().createElement("moz-button", {
     iconSrc: "chrome://global/skin/icons/more.svg",
     menuId: `panel-task-${task.id}`,
     type: "ghost"
   }), /*#__PURE__*/external_React_default().createElement("panel-list", {
     id: `panel-task-${task.id}`
-  }, task.isUrl && /*#__PURE__*/external_React_default().createElement("panel-item", {
+  }, !isCompleted && /*#__PURE__*/external_React_default().createElement((external_React_default()).Fragment, null, task.isUrl && /*#__PURE__*/external_React_default().createElement("panel-item", {
     onClick: () => window.open(task.value, "_blank", "noopener")
   }, "Open link"), /*#__PURE__*/external_React_default().createElement("panel-item", null, "Move up"), /*#__PURE__*/external_React_default().createElement("panel-item", null, "Move down"), /*#__PURE__*/external_React_default().createElement("panel-item", {
     className: "edit-item",
     onClick: () => setIsEditing(true)
-  }, "Edit"), /*#__PURE__*/external_React_default().createElement("panel-item", {
+  }, "Edit")), /*#__PURE__*/external_React_default().createElement("panel-item", {
     className: "delete-item",
-    onClick: () => deleteTask(task)
+    onClick: handleDelete
   }, "Delete item")));
 }
 function EditableText({
@@ -12718,7 +12802,10 @@ const FocusTimer = ({
   const [progress, setProgress] = (0,external_React_namespaceObject.useState)(0);
   const [progressVisible, setProgressVisible] = (0,external_React_namespaceObject.useState)(false);
   const timerType = (0,external_ReactRedux_namespaceObject.useSelector)(state => state.TimerWidget.timerType);
-  const inputRef = (0,external_React_namespaceObject.useRef)(null);
+  const activeMinutesRef = (0,external_React_namespaceObject.useRef)(null);
+  const activeSecondsRef = (0,external_React_namespaceObject.useRef)(null);
+  const idleMinutesRef = (0,external_React_namespaceObject.useRef)(null);
+  const idleSecondsRef = (0,external_React_namespaceObject.useRef)(null);
   const arcRef = (0,external_React_namespaceObject.useRef)(null);
   const timerData = (0,external_ReactRedux_namespaceObject.useSelector)(state => state.TimerWidget);
   const {
@@ -12734,6 +12821,14 @@ const FocusTimer = ({
     }
     setProgress(0);
   }, [arcRef]);
+
+  // If the timer is running, set the progress visibility to true
+  // This helps persist progressbar visibility on refresh/opening a new tab
+  (0,external_React_namespaceObject.useEffect)(() => {
+    if (isRunning) {
+      setProgressVisible(true);
+    }
+  }, [isRunning]);
   (0,external_React_namespaceObject.useEffect)(() => {
     let interval;
     if (isRunning && duration > 0) {
@@ -12792,19 +12887,27 @@ const FocusTimer = ({
   }, [progress]);
 
   // set timer function
-  const setTimerMinutes = e => {
-    if (e.key === "Enter") {
-      const minutes = parseInt(inputRef.current.value, 10);
-      const seconds = minutes * 60;
-      if (minutes > 0) {
-        dispatch(actionCreators.AlsoToMain({
-          type: actionTypes.WIDGETS_TIMER_SET_DURATION,
-          data: {
-            timerType,
-            duration: seconds
-          }
-        }));
-      }
+  const setTimerDuration = () => {
+    const minutesEl = progressVisible ? activeMinutesRef.current : idleMinutesRef.current;
+    const secondsEl = progressVisible ? activeSecondsRef.current : idleSecondsRef.current;
+    const minutesValue = minutesEl.innerText.trim() || "0";
+    const secondsValue = secondsEl.innerText.trim() || "0";
+    let minutes = parseInt(minutesValue || "0", 10);
+    let seconds = parseInt(secondsValue || "0", 10);
+
+    // Set a limit of 99 minutes
+    minutes = Math.min(minutes, 99);
+    // Set a limit of 59 seconds
+    seconds = Math.min(seconds, 59);
+    const totalSeconds = minutes * 60 + seconds;
+    if (!Number.isNaN(totalSeconds) && totalSeconds > 0 && totalSeconds !== duration) {
+      dispatch(actionCreators.AlsoToMain({
+        type: actionTypes.WIDGETS_TIMER_SET_DURATION,
+        data: {
+          timerType,
+          duration: totalSeconds
+        }
+      }));
     }
   };
 
@@ -12871,6 +12974,70 @@ const FocusTimer = ({
       }));
     });
   };
+  const handleKeyDown = e => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setTimerDuration(e);
+    }
+    if (e.key === "Tab") {
+      setTimerDuration(e);
+    }
+  };
+  const handleBeforeInput = e => {
+    const input = e.data;
+    const values = e.target.innerText.trim();
+
+    // only allow numerical digits 0–9 for time input
+    if (!/^\d+$/.test(input)) {
+      e.preventDefault();
+    }
+
+    // only allow 2 values each for minutes and seconds
+    if (values.length >= 2) {
+      e.preventDefault();
+    }
+    const selection = window.getSelection();
+    const selectedText = selection.toString();
+
+    // if entire value is selected, replace it with the new input
+    if (selectedText === values) {
+      e.preventDefault(); // prevent default typing
+      e.target.innerText = input;
+
+      // Places the caret at the end of the content-editable text
+      // This is a known problem with content-editable where the caret
+      const range = document.createRange();
+      range.selectNodeContents(e.target);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  };
+  const handleFocus = e => {
+    if (isRunning) {
+      // calculated to get the new baseline of the timer when it starts or resumes
+      const remaining = calculateTimeRemaining(duration, startTime);
+      dispatch(actionCreators.AlsoToMain({
+        type: actionTypes.WIDGETS_TIMER_PAUSE,
+        data: {
+          timerType,
+          duration: remaining
+        }
+      }));
+    }
+
+    // highlight entire text when focused on the time.
+    // this makes it easier to input the new time instead of backspacing
+    const el = e.target;
+    if (document.createRange && window.getSelection) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  };
   return timerData ? /*#__PURE__*/external_React_default().createElement("article", {
     className: "focus-timer"
   }, /*#__PURE__*/external_React_default().createElement("div", {
@@ -12896,17 +13063,35 @@ const FocusTimer = ({
     ref: timerType === "break" ? arcRef : null
   }), /*#__PURE__*/external_React_default().createElement("div", {
     className: `progress-circle-complete${progress === 1 ? " visible" : ""}`
-  }), /*#__PURE__*/external_React_default().createElement("div", {
+  }), progressVisible && /*#__PURE__*/external_React_default().createElement("div", {
     role: "timer",
     className: "progress-circle-label"
-  }, /*#__PURE__*/external_React_default().createElement("p", null, formatTime(timeLeft)))), /*#__PURE__*/external_React_default().createElement("div", {
-    className: "focus-timer-controls"
-  }, /*#__PURE__*/external_React_default().createElement("input", {
-    className: `focus-timer-input${progressVisible ? " hidden" : ""}`,
-    value: "01:00",
-    onKeyDown: setTimerMinutes,
-    ref: inputRef
-  }), /*#__PURE__*/external_React_default().createElement("moz-button", {
+  }, /*#__PURE__*/external_React_default().createElement(EditableTimerFields, {
+    minutesRef: activeMinutesRef,
+    secondsRef: activeSecondsRef,
+    onKeyDown: handleKeyDown,
+    onBeforeInput: handleBeforeInput,
+    onFocus: handleFocus,
+    timeLeft: timeLeft,
+    onBlur: () => setTimerDuration()
+  }))), /*#__PURE__*/external_React_default().createElement("div", {
+    className: "set-timer-controls-wrapper"
+  }, /*#__PURE__*/external_React_default().createElement("div", {
+    role: "timer",
+    className: `set-timer-countdown progress-circle-label${progressVisible ? " hidden" : ""}`,
+    "aria-hidden": progressVisible
+  }, /*#__PURE__*/external_React_default().createElement(EditableTimerFields, {
+    minutesRef: idleMinutesRef,
+    secondsRef: idleSecondsRef,
+    onKeyDown: handleKeyDown,
+    onBeforeInput: handleBeforeInput,
+    onFocus: handleFocus,
+    timeLeft: timeLeft,
+    tabIndex: progressVisible ? -1 : 0,
+    onBlur: () => setTimerDuration()
+  })), /*#__PURE__*/external_React_default().createElement("div", {
+    className: `focus-timer-controls ${progressVisible ? "timer-running" : " "}`
+  }, /*#__PURE__*/external_React_default().createElement("moz-button", {
     type: "primary",
     iconsrc: `chrome://global/skin/media/${isRunning ? "pause" : "play"}-fill.svg`,
     title: isRunning ? "Pause" : "Play",
@@ -12916,8 +13101,34 @@ const FocusTimer = ({
     iconsrc: "chrome://newtab/content/data/content/assets/arrow-clockwise-16.svg",
     title: "Reset",
     onClick: resetTimer
-  }))) : null;
+  })))) : null;
 };
+function EditableTimerFields({
+  minutesRef,
+  secondsRef,
+  tabIndex = 0,
+  ...props
+}) {
+  return /*#__PURE__*/external_React_default().createElement((external_React_default()).Fragment, null, /*#__PURE__*/external_React_default().createElement("span", {
+    contentEditable: "true",
+    ref: minutesRef,
+    className: "timer-set-minutes",
+    onKeyDown: props.onKeyDown,
+    onBeforeInput: props.onBeforeInput,
+    onFocus: props.onFocus,
+    onBlur: props.onBlur,
+    tabIndex: tabIndex
+  }, formatTime(props.timeLeft).split(":")[0]), ":", /*#__PURE__*/external_React_default().createElement("span", {
+    contentEditable: "true",
+    ref: secondsRef,
+    className: "timer-set-seconds",
+    onKeyDown: props.onKeyDown,
+    onBeforeInput: props.onBeforeInput,
+    onFocus: props.onFocus,
+    onBlur: props.onBlur,
+    tabIndex: tabIndex
+  }, formatTime(props.timeLeft).split(":")[1]));
+}
 ;// CONCATENATED MODULE: ./content-src/components/Widgets/Widgets.jsx
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -13181,7 +13392,12 @@ class _DiscoveryStreamBase extends (external_React_default()).PureComponent {
       locale,
       mayHaveSponsoredStories
     } = this.props;
-    // Select layout render data by adding spocs and position to recommendations
+    // Bug 1980459 - Note that selectLayoutRender acts as a selector that transforms layout data based on current
+    // preferences and experiment flags. It runs after Redux state is populated but before render.
+    // Components removed in selectLayoutRender (e.g., Widgets or TopSites) will not appear in the
+    // layoutRender result, and therefore will not be rendered here regardless of logic below.
+
+    // Select layout renders data by adding spocs and position to recommendations
     const {
       layoutRender
     } = selectLayoutRender({
