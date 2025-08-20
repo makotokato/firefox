@@ -1941,7 +1941,6 @@ const MESSAGES = () => {
                 action: {
                   type: "OPEN_URL",
                   data: {
-                    // Learn more about VPN URL to be updated with Bug 1975221
                     args: "https://support.mozilla.org/en-US/kb/use-ip-concealment-in-firefox",
                     where: "tabshifted",
                   },
@@ -1956,12 +1955,37 @@ const MESSAGES = () => {
                   lineHeight: "24px",
                 },
                 action: {
+                  type: "MULTI_ACTION",
                   dismiss: true,
-                  type: "SHOW_FIREFOX_ACCOUNTS",
                   data: {
-                    // Sign-in params to be updated with Bug 1975221
-                    entrypoint: "",
-                    where: "tabshifted",
+                    actions: [
+                      {
+                        type: "FXA_SIGNIN_FLOW",
+                        data: {
+                          where: "tab",
+                          entrypoint: "desktop-fx-vpn",
+                          autoClose: false,
+                          extraParams: {
+                            service: "sync",
+                            entrypoint_experiment: "fx-vpn-pilot",
+                            entrypoint_variation: "alpha",
+                            utm_source: "callout",
+                            utm_campaign: "fx-vpn-pilot",
+                            utm_medium: "firefox-desktop",
+                            utm_term: "fx-vpn-pilot-callout-1",
+                          },
+                        },
+                      },
+                      {
+                        type: "OPEN_PANEL",
+                        data: {
+                          widgetId: "ipprotection-button",
+                          panelId: "PanelUI-ipprotection",
+                        },
+                        requiresPrevious: true,
+                      },
+                    ],
+                    orderedExecution: true,
                   },
                 },
               },
@@ -1983,7 +2007,7 @@ const MESSAGES = () => {
         ],
       },
       targeting:
-        "'browser.ipProtection.enabled' | preferenceValue && !hasActiveEnterprisePolicies && isFxAEnabled && !isFxASignedIn && !activeNotifications && (messageImpressions.IP_PROTECTION_INTRODUCTION_CALLOUT_SECOND.length == 0)",
+        "'browser.ipProtection.enabled' | preferenceValue && !hasActiveEnterprisePolicies && isFxAEnabled && !isFxASignedIn && !activeNotifications && (messageImpressions.IP_PROTECTION_CALLOUT_SECOND || [])  | length == 0",
       trigger: {
         id: "ipProtectionReady",
       },
@@ -2046,7 +2070,6 @@ const MESSAGES = () => {
                 action: {
                   type: "OPEN_URL",
                   data: {
-                    // Learn more about VPN URL to be updated with Bug 1975221
                     args: "https://support.mozilla.org/en-US/kb/use-ip-concealment-in-firefox",
                     where: "tabshifted",
                   },
@@ -2061,12 +2084,37 @@ const MESSAGES = () => {
                   lineHeight: "24px",
                 },
                 action: {
+                  type: "MULTI_ACTION",
                   dismiss: true,
-                  type: "SHOW_FIREFOX_ACCOUNTS",
                   data: {
-                    // Sign-in params to be updated with Bug 1975221
-                    entrypoint: "",
-                    where: "tabshifted",
+                    actions: [
+                      {
+                        type: "FXA_SIGNIN_FLOW",
+                        data: {
+                          where: "tab",
+                          entrypoint: "desktop-fx-vpn",
+                          autoClose: false,
+                          extraParams: {
+                            service: "sync",
+                            entrypoint_experiment: "fx-vpn-pilot",
+                            entrypoint_variation: "alpha",
+                            utm_source: "callout",
+                            utm_campaign: "fx-vpn-pilot",
+                            utm_medium: "firefox-desktop",
+                            utm_term: "fx-vpn-pilot-callout-2",
+                          },
+                        },
+                      },
+                      {
+                        type: "OPEN_PANEL",
+                        data: {
+                          widgetId: "ipprotection-button",
+                          panelId: "PanelUI-ipprotection",
+                        },
+                        requiresPrevious: true,
+                      },
+                    ],
+                    orderedExecution: true,
                   },
                 },
               },

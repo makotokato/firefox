@@ -289,7 +289,7 @@ module.exports = function (config) {
               statements: 80.95,
               lines: 80.95,
               functions: 71.43,
-              branches: 71,
+              branches: 70.9,
             },
             /**
              * WallpaperCategories.jsx is tested via an xpcshell test
@@ -314,12 +314,6 @@ module.exports = function (config) {
              * Weather.jsx is tested via an xpcshell test
              */
             "content-src/components/Weather/*.jsx": {
-              statements: 0,
-              lines: 0,
-              functions: 0,
-              branches: 0,
-            },
-            "content-src/components/Widgets/FocusTimer/FocusTimer.jsx": {
               statements: 0,
               lines: 0,
               functions: 0,
@@ -351,6 +345,9 @@ module.exports = function (config) {
             },
             "content-src/lib/utils.jsx": {
               branches: 60,
+              statements: 95.56,
+              lines: 95.4,
+              functions: 92.86,
             },
             "content-src/components/MessageWrapper/MessageWrapper.jsx": {
               lines: 50,

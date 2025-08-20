@@ -19,9 +19,11 @@ const DEFAULT_LAUNCHER_TOOLS = "aichat,syncedtabs,history,bookmarks";
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
-  CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
+  CustomizableUI:
+    "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   PrefUtils: "resource://normandy/lib/PrefUtils.sys.mjs",
+  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
   SidebarState: "moz-src:///browser/components/sidebar/SidebarState.sys.mjs",
 });
 XPCOMUtils.defineLazyPreferenceGetter(lazy, "sidebarNimbus", "sidebar.nimbus");
@@ -47,7 +49,17 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "sidebarRevampEnabled",
   "sidebar.revamp",
   false,
-  () => SidebarManager.updateDefaultTools()
+  (pref, oldVal, newVal) => {
+    SidebarManager.updateDefaultTools();
+
+    if (!newVal) {
+      // Disable vertical tabs if revamped sidebar is turned off
+      Services.prefs.setBoolPref("sidebar.verticalTabs", false);
+    } else if (newVal && !lazy.verticalTabsEnabled) {
+      // horizontal tabs with sidebar.revamp must have visibility of "hide-sidebar"
+      Services.prefs.setStringPref(VISIBILITY_SETTING_PREF, "hide-sidebar");
+    }
+  }
 );
 
 XPCOMUtils.defineLazyPreferenceGetter(lazy, "sidebarTools", SIDEBAR_TOOLS, "");
@@ -125,7 +137,9 @@ export const SidebarManager = {
       this.updateDefaultTools.bind(this)
     );
     this.updateDefaultTools();
-    this.checkForPinnedTabs();
+    lazy.SessionStore.promiseAllWindowsRestored.then(() => {
+      this.checkForPinnedTabs();
+    });
 
     // if there's no user visibility pref, we may need to update it to the default value for the tab orientation
     const shouldResetVisibility = !Services.prefs.prefHasUserValue(

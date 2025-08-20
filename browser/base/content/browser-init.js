@@ -396,7 +396,6 @@ var gBrowserInit = {
     Services.obs.addObserver(gLocaleChangeObserver, "intl:app-locales-changed");
 
     BrowserOffline.init();
-    CanvasPermissionPromptHelper.init();
     WebAuthnPromptHelper.init();
 
     BrowserUtils.callModulesFromCategory(
@@ -756,6 +755,7 @@ var gBrowserInit = {
             : Ci.nsIScriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
 
         let hasValidUserGestureActivation = undefined;
+        let textDirectiveUserActivation = undefined;
         let fromExternal = undefined;
         let globalHistoryOptions = undefined;
         let triggeringRemoteType = undefined;
@@ -774,6 +774,11 @@ var gBrowserInit = {
               "hasValidUserGestureActivation"
             );
           }
+          if (extraOptions.hasKey("textDirectiveUserActivation")) {
+            textDirectiveUserActivation = extraOptions.getPropertyAsBool(
+              "textDirectiveUserActivation"
+            );
+          }
           if (extraOptions.hasKey("fromExternal")) {
             fromExternal = extraOptions.getPropertyAsBool("fromExternal");
           }
@@ -788,6 +793,10 @@ var gBrowserInit = {
                 extraOptions.getPropertyAsUint64(
                   "triggeringSponsoredURLVisitTimeMS"
                 );
+            }
+            if (extraOptions.hasKey("triggeringSource")) {
+              globalHistoryOptions.triggeringSource =
+                extraOptions.getPropertyAsACString("triggeringSource");
             }
           }
           if (extraOptions.hasKey("triggeringRemoteType")) {
@@ -823,6 +832,7 @@ var gBrowserInit = {
             forceAboutBlankViewerInCurrent: !!window.arguments[6],
             forceAllowDataURI,
             hasValidUserGestureActivation,
+            textDirectiveUserActivation,
             fromExternal,
             globalHistoryOptions,
             triggeringRemoteType,
@@ -908,7 +918,7 @@ var gBrowserInit = {
         try {
           DownloadsCommon.initializeAllDataLinks();
           ChromeUtils.importESModule(
-            "resource:///modules/DownloadsTaskbar.sys.mjs"
+            "moz-src:///browser/components/downloads/DownloadsTaskbar.sys.mjs"
           )
             .DownloadsTaskbar.registerIndicator(window)
             .catch(ex => {
@@ -916,7 +926,7 @@ var gBrowserInit = {
             });
           if (AppConstants.platform == "macosx") {
             ChromeUtils.importESModule(
-              "resource:///modules/DownloadsMacFinderProgress.sys.mjs"
+              "moz-src:///browser/components/downloads/DownloadsMacFinderProgress.sys.mjs"
             ).DownloadsMacFinderProgress.register();
           }
         } catch (ex) {
@@ -1127,7 +1137,6 @@ var gBrowserInit = {
       );
 
       BrowserOffline.uninit();
-      CanvasPermissionPromptHelper.uninit();
       WebAuthnPromptHelper.uninit();
       PanelUI.uninit();
     }

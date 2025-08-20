@@ -68,13 +68,13 @@
 #ifdef ACCESSIBILITY
 #  include "nsAccessibilityService.h"
 #endif
+#include "DisplayListClipState.h"
 #include "ImageContainer.h"
 #include "ImageRegion.h"
 #include "gfxRect.h"
 #include "imgIContainer.h"
 #include "imgLoader.h"
 #include "imgRequestProxy.h"
-#include "mozilla/Preferences.h"
 #include "mozilla/ServoStyleSet.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/HTMLAnchorElement.h"
@@ -2376,15 +2376,18 @@ nsRect nsDisplayImage::GetDestRectViewTransition() const {
   // destRect with respect to the captured element's inkOverflowRect.
   nsPoint inkOverflowOffset;
   nsSize inkOverflowBoxSize, borderBoxSize;
+  Maybe<nsRect> activeRect;
 
   if (image->Style()->GetPseudoType() == PseudoStyleType::viewTransitionOld) {
     inkOverflowOffset = vt->GetOldInkOverflowOffset(name).value();
     inkOverflowBoxSize = vt->GetOldInkOverflowBoxSize(name).value();
     borderBoxSize = vt->GetOldBorderBoxSize(name).value();
+    activeRect = vt->GetOldActiveRect(name);
   } else {
     inkOverflowOffset = vt->GetNewInkOverflowOffset(name).value();
     inkOverflowBoxSize = vt->GetNewInkOverflowBoxSize(name).value();
     borderBoxSize = vt->GetNewBorderBoxSize(name).value();
+    activeRect = vt->GetNewActiveRect(name);
   }
 
   if (borderBoxSize.IsEmpty()) {
@@ -2411,8 +2414,14 @@ nsRect nsDisplayImage::GetDestRectViewTransition() const {
   auto scaledWidth = std::round(widthRatio * destRect.Width());
   auto scaledHeight = std::round(heightRatio * destRect.Height());
 
-  return nsRect(destRect.TopLeft() + inkOverflowOffset,
-                nsSize(scaledWidth, scaledHeight));
+  destRect = nsRect(destRect.TopLeft() + inkOverflowOffset,
+                    nsSize(scaledWidth, scaledHeight));
+
+  if (activeRect) {
+    destRect = destRect.Intersect(activeRect.value());
+  }
+
+  return destRect;
 }
 
 nsRegion nsDisplayImage::GetOpaqueRegion(nsDisplayListBuilder* aBuilder,
@@ -2642,16 +2651,29 @@ void nsImageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     return;
   }
 
-  uint32_t clipFlags =
-      nsStyleUtil::ObjectPropsMightCauseOverflow(StylePosition())
-          ? 0
-          : DisplayListClipState::ASSUME_DRAWING_RESTRICTED_TO_CONTENT_RECT;
-
-  DisplayListClipState::AutoClipContainingBlockDescendantsToContentBox clip(
-      aBuilder, this, clipFlags);
+  DisplayListClipState::AutoSaveRestore clipState(aBuilder);
+  const bool isViewTransition = mKind == Kind::ViewTransition;
+  auto clipAxes = ShouldApplyOverflowClipping(StyleDisplay());
+  if (!clipAxes.isEmpty()) {
+    nsRect clipRect;
+    nscoord radii[8];
+    bool haveRadii =
+        ComputeOverflowClipRectRelativeToSelf(clipAxes, clipRect, radii);
+    clipState.ClipContainingBlockDescendants(
+        clipRect + aBuilder->ToReferenceFrame(this),
+        haveRadii ? radii : nullptr);
+  } else if (!isViewTransition) {
+    // Allow overflow by default for view transitions, but not for other image
+    // types, for historical reasons.
+    uint32_t clipFlags =
+        nsStyleUtil::ObjectPropsMightCauseOverflow(StylePosition())
+            ? 0
+            : DisplayListClipState::ASSUME_DRAWING_RESTRICTED_TO_CONTENT_RECT;
+    clipState.ClipContainingBlockDescendantsToContentBox(aBuilder, this,
+                                                         clipFlags);
+  }
 
   if (!mComputedSize.IsEmpty()) {
-    const bool isViewTransition = mKind == Kind::ViewTransition;
     const bool imageOK = mKind != Kind::ImageLoadingContent ||
                          ImageOk(mContent->AsElement()->State());
 

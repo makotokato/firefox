@@ -63,6 +63,7 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.browser.browsingmode.DefaultBrowsingModeManager
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.TabCollectionStorage
+import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.maxActiveTime
 import org.mozilla.fenix.helpers.FenixGleanTestRule
@@ -148,6 +149,7 @@ class DefaultTabManagerControllerTest {
 
         verifyOrder {
             profiler.getProfilerTime()
+            navController.popBackStack()
             navController.navigate(
                 TabManagementFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
             )
@@ -196,6 +198,7 @@ class DefaultTabManagerControllerTest {
 
         verifyOrder {
             profiler.getProfilerTime()
+            navController.popBackStack()
             navController.navigate(
                 TabManagementFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
             )
@@ -360,6 +363,7 @@ class DefaultTabManagerControllerTest {
         createController().handleNavigateToBrowser()
 
         verify { navController.popBackStack(R.id.browserFragment, false) }
+        verify { navController.popBackStack() }
         verify { navController.navigate(R.id.browserFragment) }
     }
 
@@ -407,6 +411,7 @@ class DefaultTabManagerControllerTest {
         createController().handleNavigateToHome()
 
         verify { navController.popBackStack(R.id.homeFragment, false) }
+        verify { navController.popBackStack() }
         verify { navController.navigate(TabManagementFragmentDirections.actionGlobalHome()) }
     }
 
@@ -1060,7 +1065,6 @@ class DefaultTabManagerControllerTest {
         var appStateModeUpdate: BrowsingMode? = null
         browsingModeManager = DefaultBrowsingModeManager(
             intent = null,
-            store = browserStore,
             settings = settings,
             onModeChange = { updatedMode ->
                 appStateModeUpdate = updatedMode
@@ -1205,13 +1209,9 @@ class DefaultTabManagerControllerTest {
             },
         ).handleBookmarkSelectedTabsClicked()
 
+        verify { trayStore.dispatch(TabsTrayAction.BookmarkSelectedTabs(1)) }
         coVerify(exactly = 1) { bookmarksStorage.addItem(eq(BookmarkRoot.Mobile.id), any(), any(), any()) }
         assertTrue(showBookmarkSnackbarInvoked)
-
-        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
-        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
-        assertEquals(1, snapshot.size)
-        assertEquals("1", snapshot.single().extra?.getValue("tab_count"))
     }
 
     @Test
@@ -1230,13 +1230,9 @@ class DefaultTabManagerControllerTest {
             },
         ).handleBookmarkSelectedTabsClicked()
 
+        verify { trayStore.dispatch(TabsTrayAction.BookmarkSelectedTabs(1)) }
         coVerify(exactly = 1) { bookmarksStorage.addItem(eq(parentGuid), any(), any(), any()) }
         assertTrue(showBookmarkSnackbarInvoked)
-
-        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
-        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
-        assertEquals(1, snapshot.size)
-        assertEquals("1", snapshot.single().extra?.getValue("tab_count"))
     }
 
     @Test
@@ -1253,13 +1249,9 @@ class DefaultTabManagerControllerTest {
             },
         ).handleBookmarkSelectedTabsClicked()
 
+        verify { trayStore.dispatch(TabsTrayAction.BookmarkSelectedTabs(2)) }
         coVerify(exactly = 2) { bookmarksStorage.addItem(eq(BookmarkRoot.Mobile.id), any(), any(), any()) }
         assertTrue(showBookmarkSnackbarInvoked)
-
-        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
-        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
-        assertEquals(1, snapshot.size)
-        assertEquals("2", snapshot.single().extra?.getValue("tab_count"))
     }
 
     @Test
@@ -1278,13 +1270,9 @@ class DefaultTabManagerControllerTest {
             },
         ).handleBookmarkSelectedTabsClicked()
 
+        verify { trayStore.dispatch(TabsTrayAction.BookmarkSelectedTabs(2)) }
         coVerify(exactly = 2) { bookmarksStorage.addItem(eq(parentGuid), any(), any(), any()) }
         assertTrue(showBookmarkSnackbarInvoked)
-
-        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
-        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
-        assertEquals(1, snapshot.size)
-        assertEquals("2", snapshot.single().extra?.getValue("tab_count"))
     }
 
     @Test
@@ -1351,6 +1339,19 @@ class DefaultTabManagerControllerTest {
         createController().handleTabPageClicked(Page.SyncedTabs)
 
         assertNull(TabsTray.syncedModeTapped.testGetValue())
+    }
+
+    @Test
+    fun `WHEN the sign into Sync button is clicked THEN navigate the user to the sign into Sync flow`() {
+        createController().handleSignInClicked()
+
+        verify {
+            navController.navigate(
+                TabManagementFragmentDirections.actionGlobalTurnOnSync(
+                    entrypoint = FenixFxAEntryPoint.SyncedTabsMenu,
+                ),
+            )
+        }
     }
 
     private fun createController(

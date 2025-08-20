@@ -5,43 +5,44 @@
 
 #include "ClientWebGLContext.h"
 
-#include <bitset>
 #include <fmt/format.h>
 
+#include <bitset>
+
 #include "ClientWebGLExtensions.h"
-#include "gfxCrashReporterUtils.h"
 #include "HostWebGLContext.h"
+#include "TexUnpackBlob.h"
+#include "WebGLChild.h"
+#include "WebGLFormats.h"
+#include "WebGLMethodDispatcher.h"
+#include "WebGLTextureUpload.h"
+#include "WebGLValidateStrings.h"
+#include "gfxCrashReporterUtils.h"
 #include "js/PropertyAndElement.h"  // JS_DefineElement
 #include "js/ScalarType.h"          // js::Scalar::Type
+#include "mozilla/EnumeratedRange.h"
+#include "mozilla/ResultVariant.h"
+#include "mozilla/ScopeExit.h"
+#include "mozilla/StaticPrefs_webgl.h"
 #include "mozilla/dom/BufferSourceBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/WebGLContextEvent.h"
 #include "mozilla/dom/WorkerCommon.h"
-#include "mozilla/EnumeratedRange.h"
-#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/CanvasManagerChild.h"
-#include "mozilla/ipc/Shmem.h"
 #include "mozilla/gfx/Swizzle.h"
+#include "mozilla/gfx/gfxVars.h"
+#include "mozilla/ipc/Shmem.h"
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/OOPCanvasRenderer.h"
 #include "mozilla/layers/TextureClientSharedSurface.h"
-#include "mozilla/layers/WebRenderUserData.h"
 #include "mozilla/layers/WebRenderCanvasRenderer.h"
-#include "mozilla/ResultVariant.h"
-#include "mozilla/ScopeExit.h"
-#include "mozilla/StaticPrefs_webgl.h"
+#include "mozilla/layers/WebRenderUserData.h"
 #include "nsContentUtils.h"
 #include "nsDisplayList.h"
-#include "TexUnpackBlob.h"
-#include "WebGLFormats.h"
-#include "WebGLMethodDispatcher.h"
-#include "WebGLChild.h"
-#include "WebGLTextureUpload.h"
-#include "WebGLValidateStrings.h"
 
 namespace mozilla {
 
@@ -1329,6 +1330,7 @@ RefPtr<gfx::DataSourceSurface> ClientWebGLContext::BackBufferSnapshot() {
 }
 
 UniquePtr<uint8_t[]> ClientWebGLContext::GetImageBuffer(
+    mozilla::CanvasUtils::ImageExtraction aExtractionBehavior,
     int32_t* out_format, gfx::IntSize* out_imageSize) {
   *out_format = 0;
   *out_imageSize = {};
@@ -1343,7 +1345,7 @@ UniquePtr<uint8_t[]> ClientWebGLContext::GetImageBuffer(
   const auto& premultAlpha = mNotLost->info.options.premultipliedAlpha;
   *out_imageSize = dataSurface->GetSize();
 
-  if (ShouldResistFingerprinting(RFPTarget::CanvasRandomization)) {
+  if (aExtractionBehavior == CanvasUtils::ImageExtraction::Randomize) {
     return gfxUtils::GetImageBufferWithRandomNoise(
         dataSurface, premultAlpha, GetCookieJarSettings(), PrincipalOrNull(),
         out_format);
@@ -1353,9 +1355,10 @@ UniquePtr<uint8_t[]> ClientWebGLContext::GetImageBuffer(
 }
 
 NS_IMETHODIMP
-ClientWebGLContext::GetInputStream(const char* mimeType,
-                                   const nsAString& encoderOptions,
-                                   nsIInputStream** out_stream) {
+ClientWebGLContext::GetInputStream(
+    const char* mimeType, const nsAString& encoderOptions,
+    mozilla::CanvasUtils::ImageExtraction spoofing,
+    nsIInputStream** out_stream) {
   // Use GetSurfaceSnapshot() to make sure that appropriate y-flip gets applied
   gfxAlphaType any;
   RefPtr<gfx::SourceSurface> snapshot = GetSurfaceSnapshot(&any);

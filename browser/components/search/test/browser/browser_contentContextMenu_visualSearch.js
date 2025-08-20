@@ -17,9 +17,9 @@ const VISUAL_SEARCH_MENUITEM_ID = "context-visual-search";
 const TEST_PAGE_URL =
   "http://mochi.test:8888/browser/browser/components/search/test/browser/browser_contentContextMenu.xhtml";
 
-// The URL of the image in the test page.
+// The URL of the primary image in the test page.
 const IMAGE_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAATklEQVRYhe3SIQ4AIBADwf7/04elBAtrVlSduGnSTDJ7cuT1PQJwwO+Hl7sAGAA07gjAAfgIBeAAoHFHAA7ARygABwCNOwJwAD5CATRgAYXh+kypw86nAAAAAElFTkSuQmCC";
+  "http://mochi.test:8888/browser/browser/components/search/test/browser/ctxmenu-image.png";
 
 const SEARCH_CONFIG = [
   // an engine with visual search
@@ -32,6 +32,7 @@ const SEARCH_CONFIG = [
         visualSearch: {
           base: "https://example.com/visual-search-1",
           searchTermParamName: "url",
+          acceptedContentTypes: ["image/png"],
         },
       },
     },
@@ -189,6 +190,28 @@ add_task(async function contextClick_selectedText() {
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], async function () {
     let selection = content.getSelection();
     selection.removeAllRanges();
+  });
+});
+
+// With a default engine that supports visual search, context-clicking an image
+// of an unsupported type should not show the visual search menuitem.
+add_task(async function contextClick_unsupportedImage() {
+  await setDefaultEngineAndCheckMenu({
+    // SVG is unsupported because it's not in the engine config's
+    // `acceptedContentTypes`.
+    selector: "#image-svg",
+    defaultEngineId: "visual-search-1",
+    shouldBeShown: false,
+  });
+});
+
+// With a default engine that supports visual search, context-clicking an image
+// encoded as a data URI should not show the visual search menuitem.
+add_task(async function contextClick_dataURI() {
+  await setDefaultEngineAndCheckMenu({
+    selector: "#image-data-uri",
+    defaultEngineId: "visual-search-1",
+    shouldBeShown: false,
   });
 });
 
@@ -396,6 +419,18 @@ async function openAndCheckMenu({
   selector,
   shouldHaveNewBadge = false,
 }) {
+  let selectorMatches = await SpecialPowers.spawn(
+    win.gBrowser.selectedBrowser,
+    [selector],
+    async function (sel) {
+      return !!content.document.querySelector(sel);
+    }
+  );
+  Assert.ok(
+    selectorMatches,
+    "Sanity check: selector should match an element in the page: " + selector
+  );
+
   let menu = win.document.getElementById(CONTEXT_MENU_ID);
   let popupPromise = BrowserTestUtils.waitForEvent(menu, "popupshown");
 
@@ -418,9 +453,14 @@ async function openAndCheckMenu({
     "The visual search menuitem should be shown as expected"
   );
   if (shouldBeShown) {
+    let expectedLabel = `Search Image with ${expectedEngineNameInLabel}`;
+    await TestUtils.waitForCondition(
+      () => item.label == expectedLabel,
+      "Waiting for expected label to be set on item: " + expectedLabel
+    );
     Assert.equal(
       item.label,
-      `Search Image with ${expectedEngineNameInLabel}`,
+      expectedLabel,
       "The visual search menuitem should have the expected label"
     );
     await checkNewBadge({ item, shouldHaveNewBadge });

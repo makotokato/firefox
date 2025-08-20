@@ -7,11 +7,12 @@
 #ifndef WMFMediaDataEncoder_h_
 #define WMFMediaDataEncoder_h_
 
+#include <comdef.h>
+
 #include "MFTEncoder.h"
 #include "PlatformEncoderModule.h"
 #include "WMFDataEncoderUtils.h"
 #include "WMFUtils.h"
-#include <comdef.h>
 #include "mozilla/WindowsProcessMitigations.h"
 
 namespace mozilla {
@@ -28,6 +29,9 @@ class WMFMediaDataEncoder final : public MediaDataEncoder {
   RefPtr<EncodePromise> Drain() override;
   RefPtr<ShutdownPromise> Shutdown() override;
   RefPtr<GenericPromise> SetBitrate(uint32_t aBitsPerSec) override;
+  bool IsHardwareAccelerated(nsACString& aFailureReason) const override {
+    return mIsHardwareAccelerated;
+  }
 
   RefPtr<ReconfigurationPromise> Reconfigure(
       const RefPtr<const EncoderConfigurationChangeList>& aConfigurationChanges)
@@ -93,6 +97,9 @@ class WMFMediaDataEncoder final : public MediaDataEncoder {
   RefPtr<MFTEncoder> mEncoder;
   // SPS/PPS NALUs when encoding in AnnexB usage, avcC otherwise.
   RefPtr<MediaByteBuffer> mConfigData;
+
+  // Can be accessed on any thread, but only written on during init.
+  Atomic<bool> mIsHardwareAccelerated;
 
   MozPromiseHolder<EncodePromise> mEncodePromise;
   MozPromiseRequestHolder<MFTEncoder::EncodePromise> mEncodeRequest;

@@ -34,6 +34,7 @@ add_setup(async function init() {
   await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: TEST_MERINO_SINGLE,
     prefs: [
+      ["market.featureGate", true],
       ["suggest.market", true],
       ["suggest.quicksuggest.nonsponsored", true],
     ],
@@ -66,8 +67,8 @@ add_task(async function showLessFrequently() {
   UrlbarPrefs.clear("market.minKeywordLength");
 
   let cleanUpNimbus = await UrlbarTestUtils.initNimbusFeature({
-    marketMinKeywordLength: 0,
-    marketShowLessFrequentlyCap: 3,
+    realtimeMinKeywordLength: 0,
+    realtimeShowLessFrequentlyCap: 3,
   });
 
   let result = marketResult();
@@ -170,7 +171,8 @@ function marketResult() {
   return {
     type: UrlbarUtils.RESULT_TYPE.DYNAMIC,
     source: UrlbarUtils.RESULT_SOURCE.SEARCH,
-    isBestMatch: false,
+    isBestMatch: true,
+    hideRowLabel: true,
     rowIndex: -1,
     heuristic: false,
     exposureTelemetry: 0,

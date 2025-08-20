@@ -9,11 +9,11 @@
  */
 
 #include "mozilla/dom/Document.h"
-#include "mozilla/dom/DocumentInlines.h"
 
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +21,7 @@
 #include <iterator>
 #include <limits>
 #include <type_traits>
+
 #include "Attr.h"
 #include "ErrorList.h"
 #include "ExpandedPrincipal.h"
@@ -36,8 +37,8 @@
 #include "imgIContainer.h"
 #include "imgLoader.h"
 #include "imgRequestProxy.h"
-#include "js/Value.h"
 #include "js/TelemetryTimers.h"
+#include "js/Value.h"
 #include "jsapi.h"
 #include "mozAutoDocUpdate.h"
 #include "mozIDOMWindow.h"
@@ -46,23 +47,21 @@
 #include "mozilla/ArrayIterator.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AsyncEventDispatcher.h"
+#include "mozilla/AttributeStyles.h"
 #include "mozilla/Base64.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/BounceTrackingProtection.h"
 #include "mozilla/CSSEnabledState.h"
+#include "mozilla/Components.h"
 #include "mozilla/ContentBlockingAllowList.h"
 #include "mozilla/ContentBlockingNotifier.h"
 #include "mozilla/ContentBlockingUserInteraction.h"
 #include "mozilla/ContentPrincipal.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/ProfilerMarkers.h"
-#include "mozilla/AttributeStyles.h"
 #include "mozilla/DocumentStyleRootIterator.h"
 #include "mozilla/EditorBase.h"
 #include "mozilla/EditorCommands.h"
-#include "mozilla/dom/BindContext.h"
-#include "mozilla/Encoding.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
@@ -71,7 +70,6 @@
 #include "mozilla/ExtensionPolicyService.h"
 #include "mozilla/FullscreenChange.h"
 #include "mozilla/GlobalStyleSheetCache.h"
-#include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/HoldDropJSObjects.h"
 #include "mozilla/IdentifierMapEntry.h"
@@ -82,6 +80,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MacroForEach.h"
+#include "mozilla/MappedDeclarationsBuilder.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MediaFeatureChange.h"
 #include "mozilla/MediaManager.h"
@@ -98,19 +97,19 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/PresShellForwards.h"
 #include "mozilla/PresShellInlines.h"
+#include "mozilla/ProfilerMarkers.h"
 #include "mozilla/PseudoStyleType.h"
 #include "mozilla/RefCountType.h"
 #include "mozilla/RelativeTo.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ReverseIterator.h"
-#include "mozilla/SchedulerGroup.h"
-#include "mozilla/ScrollTimelineAnimationTracker.h"
 #include "mozilla/SMILAnimationController.h"
 #include "mozilla/SMILTimeContainer.h"
+#include "mozilla/SVGUtils.h"
+#include "mozilla/SchedulerGroup.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ScrollContainerFrame.h"
-#include "mozilla/Components.h"
-#include "mozilla/SVGUtils.h"
+#include "mozilla/ScrollTimelineAnimationTracker.h"
 #include "mozilla/ServoStyleConsts.h"
 #include "mozilla/ServoTypes.h"
 #include "mozilla/SizeOfState.h"
@@ -146,32 +145,33 @@
 #include "mozilla/css/SheetParsingMode.h"
 #include "mozilla/dom/AncestorIterator.h"
 #include "mozilla/dom/AnonymousContent.h"
+#include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/BrowsingContextGroup.h"
-#include "mozilla/dom/CanonicalBrowsingContext.h"
-#include "mozilla/dom/CanvasRenderingContextHelper.h"
 #include "mozilla/dom/CDATASection.h"
 #include "mozilla/dom/CSPDictionariesBinding.h"
+#include "mozilla/dom/CSSBinding.h"
+#include "mozilla/dom/CSSCustomPropertyRegisteredEvent.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "mozilla/dom/CanvasRenderingContextHelper.h"
 #include "mozilla/dom/ChromeObserver.h"
 #include "mozilla/dom/ClientInfo.h"
 #include "mozilla/dom/ClientState.h"
 #include "mozilla/dom/CloseWatcherManager.h"
 #include "mozilla/dom/Comment.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/CSSBinding.h"
-#include "mozilla/dom/CSSCustomPropertyRegisteredEvent.h"
 #include "mozilla/dom/DOMImplementation.h"
 #include "mozilla/dom/DOMIntersectionObserver.h"
 #include "mozilla/dom/DOMStringList.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/DocumentBinding.h"
 #include "mozilla/dom/DocumentFragment.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/DocumentL10n.h"
 #include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/DocumentType.h"
-#include "mozilla/dom/Sanitizer.h"
 #include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/Event.h"
@@ -181,10 +181,7 @@
 #include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/FontFaceSet.h"
 #include "mozilla/dom/FragmentDirective.h"
-#include "mozilla/dom/NavigationBinding.h"
-#include "mozilla/dom/fragmentdirectives_ffi_generated.h"
 #include "mozilla/dom/FromParser.h"
-#include "mozilla/dom/HighlightRegistry.h"
 #include "mozilla/dom/HTMLAllCollection.h"
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/HTMLCollectionBinding.h"
@@ -200,18 +197,20 @@
 #include "mozilla/dom/HTMLObjectElement.h"
 #include "mozilla/dom/HTMLSharedElement.h"
 #include "mozilla/dom/HTMLTextAreaElement.h"
+#include "mozilla/dom/HighlightRegistry.h"
 #include "mozilla/dom/InspectorUtils.h"
+#include "mozilla/dom/IntegrityPolicy.h"
 #include "mozilla/dom/InteractiveWidget.h"
 #include "mozilla/dom/Link.h"
 #include "mozilla/dom/MediaQueryList.h"
 #include "mozilla/dom/MediaSource.h"
 #include "mozilla/dom/MutationObservers.h"
 #include "mozilla/dom/NameSpaceConstants.h"
+#include "mozilla/dom/NavigationBinding.h"
 #include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/NetErrorInfoBinding.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "mozilla/dom/NodeIterator.h"
-#include "mozilla/dom/nsHTTPSOnlyUtils.h"
 #include "mozilla/dom/PContentChild.h"
 #include "mozilla/dom/PWindowGlobalChild.h"
 #include "mozilla/dom/PageLoadEventUtils.h"
@@ -227,10 +226,11 @@
 #include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/dom/ResizeObserver.h"
 #include "mozilla/dom/RustTypes.h"
-#include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGDocument.h"
+#include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/SVGUseElement.h"
+#include "mozilla/dom/Sanitizer.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/Selection.h"
@@ -267,9 +267,12 @@
 #include "mozilla/dom/WorkerDocumentListener.h"
 #include "mozilla/dom/XPathEvaluator.h"
 #include "mozilla/dom/XPathExpression.h"
+#include "mozilla/dom/XULBroadcastManager.h"
+#include "mozilla/dom/XULPersist.h"
+#include "mozilla/dom/fragmentdirectives_ffi_generated.h"
 #include "mozilla/dom/nsCSPContext.h"
 #include "mozilla/dom/nsCSPUtils.h"
-#include "mozilla/dom/IntegrityPolicy.h"
+#include "mozilla/dom/nsHTTPSOnlyUtils.h"
 #include "mozilla/extensions/WebExtensionPolicy.h"
 #include "mozilla/fallible.h"
 #include "mozilla/gfx/BaseCoord.h"
@@ -292,7 +295,6 @@
 #include "mozilla/net/RequestContextService.h"
 #include "nsAboutProtocolUtils.h"
 #include "nsAttrValue.h"
-#include "nsMenuPopupFrame.h"
 #include "nsAttrValueInlines.h"
 #include "nsBaseHashtable.h"
 #include "nsBidiUtils.h"
@@ -334,6 +336,7 @@
 #include "nsHtml5Module.h"
 #include "nsHtml5Parser.h"
 #include "nsHtml5TreeOpExecutor.h"
+#include "nsIAppWindow.h"
 #include "nsIAsyncShutdown.h"
 #include "nsIAuthPrompt.h"
 #include "nsIAuthPrompt2.h"
@@ -352,15 +355,16 @@
 #include "nsIContentSink.h"
 #include "nsICookieJarSettings.h"
 #include "nsICookieService.h"
+#include "nsIDNSService.h"
 #include "nsIDOMXULCommandDispatcher.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
+#include "nsIDocShellTreeOwner.h"
 #include "nsIDocumentActivity.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDocumentLoader.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIDocumentObserver.h"
-#include "nsIDNSService.h"
 #include "nsIEditingSession.h"
 #include "nsIEditor.h"
 #include "nsIEffectiveTLDService.h"
@@ -369,6 +373,7 @@
 #include "nsIFrame.h"
 #include "nsIGlobalObject.h"
 #include "nsIHTMLCollection.h"
+#include "nsIHTMLContentSink.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIIOService.h"
@@ -418,11 +423,11 @@
 #include "nsIX509Cert.h"
 #include "nsIX509CertValidity.h"
 #include "nsIXMLContentSink.h"
-#include "nsIHTMLContentSink.h"
 #include "nsIXULRuntime.h"
 #include "nsImageLoadingContent.h"
 #include "nsImportModule.h"
 #include "nsLayoutUtils.h"
+#include "nsMenuPopupFrame.h"
 #include "nsMimeTypes.h"
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
@@ -442,12 +447,12 @@
 #include "nsSerializationHelper.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStringFlags.h"
-#include "nsStyleUtil.h"
 #include "nsStringIterator.h"
 #include "nsStyleSheetService.h"
 #include "nsStyleStruct.h"
-#include "nsTextControlFrame.h"
+#include "nsStyleUtil.h"
 #include "nsSubDocumentFrame.h"
+#include "nsTextControlFrame.h"
 #include "nsTextNode.h"
 #include "nsURLHelper.h"
 #include "nsUnicharUtils.h"
@@ -455,21 +460,18 @@
 #include "nsWrapperCacheInlines.h"
 #include "nsXPCOMCID.h"
 #include "nsXULAppAPI.h"
+#include "nsXULCommandDispatcher.h"
+#include "nsXULPopupManager.h"
+#include "nsXULPrototypeDocument.h"
 #include "prthread.h"
 #include "prtime.h"
 #include "prtypes.h"
 #include "xpcpublic.h"
 
-// XXX Must be included after mozilla/Encoding.h
+// clang-format off
+#include "mozilla/Encoding.h"
 #include "encoding_rs.h"
-
-#include "mozilla/dom/XULBroadcastManager.h"
-#include "mozilla/dom/XULPersist.h"
-#include "nsIAppWindow.h"
-#include "nsXULPrototypeDocument.h"
-#include "nsXULCommandDispatcher.h"
-#include "nsXULPopupManager.h"
-#include "nsIDocShellTreeOwner.h"
+// clang-format on
 
 #define XML_DECLARATION_BITS_DECLARATION_EXISTS (1 << 0)
 #define XML_DECLARATION_BITS_ENCODING_EXISTS (1 << 1)
@@ -2289,8 +2291,13 @@ void Document::AccumulatePageLoadTelemetry() {
   TimeStamp navigationStart =
       GetNavigationTiming()->GetNavigationStartTimeStamp();
 
-  if (!responseStart || !navigationStart) {
+  if (!navigationStart) {
     return;
+  }
+
+  if (!responseStart) {
+    // This happens when getting a response from the cache.
+    responseStart = navigationStart;
   }
 
   nsAutoCString dnsKey("Native");
@@ -6233,24 +6240,16 @@ nsresult Document::TurnEditingOff() {
     return NS_ERROR_FAILURE;
   }
 
-  nsIDocShell* docshell = window->GetDocShell();
-  if (!docshell) {
-    return NS_ERROR_FAILURE;
-  }
-
-  bool isBeingDestroyed = false;
-  docshell->IsBeingDestroyed(&isBeingDestroyed);
-  if (isBeingDestroyed) {
+  nsIDocShell* docshell = GetDocShell();
+  if (!docshell || docshell->IsBeingDestroyed()) {
     return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsIEditingSession> editSession;
-  nsresult rv = docshell->GetEditingSession(getter_AddRefs(editSession));
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_TRY(docshell->GetEditingSession(getter_AddRefs(editSession)));
 
   // turn editing off
-  rv = editSession->TearDownEditorOnWindow(window);
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_TRY(editSession->TearDownEditorOnWindow(window));
 
   mEditingState = EditingState::eOff;
 
@@ -6265,14 +6264,6 @@ nsresult Document::TurnEditingOff() {
   }
 
   return NS_OK;
-}
-
-static bool HasPresShell(nsPIDOMWindowOuter* aWindow) {
-  nsIDocShell* docShell = aWindow->GetDocShell();
-  if (!docShell) {
-    return false;
-  }
-  return docShell->GetPresShell() != nullptr;
 }
 
 HTMLEditor* Document::GetHTMLEditor() const {
@@ -6358,24 +6349,15 @@ nsresult Document::EditingStateChanged() {
     return NS_ERROR_FAILURE;
   }
 
-  nsIDocShell* docshell = window->GetDocShell();
-  if (!docshell) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // FlushPendingNotifications might destroy our docshell.
-  bool isBeingDestroyed = false;
-  docshell->IsBeingDestroyed(&isBeingDestroyed);
-  if (isBeingDestroyed) {
+  nsIDocShell* docshell = GetDocShell();
+  if (!docshell || docshell->IsBeingDestroyed()) {
     return NS_ERROR_FAILURE;
   }
 
   nsCOMPtr<nsIEditingSession> editSession;
-  nsresult rv = docshell->GetEditingSession(getter_AddRefs(editSession));
-  NS_ENSURE_SUCCESS(rv, rv);
+  MOZ_TRY(docshell->GetEditingSession(getter_AddRefs(editSession)));
 
-  RefPtr<HTMLEditor> htmlEditor = editSession->GetHTMLEditorForWindow(window);
-  if (htmlEditor) {
+  if (RefPtr<HTMLEditor> htmlEditor = docshell->GetHTMLEditor()) {
     // We might already have an editor if it was set up for mail, let's see
     // if this is actually the case.
     uint32_t flags = 0;
@@ -6387,7 +6369,8 @@ nsresult Document::EditingStateChanged() {
     }
   }
 
-  if (!HasPresShell(window)) {
+  RefPtr<PresShell> presShell = GetPresShell();
+  if (!presShell) {
     // We should not make the window editable or setup its editor.
     // It's probably style=display:none.
     return NS_OK;
@@ -6396,13 +6379,10 @@ nsresult Document::EditingStateChanged() {
   bool makeWindowEditable = mEditingState == EditingState::eOff;
   bool spellRecheckAll = false;
   bool putOffToRemoveScriptBlockerUntilModifyingEditingState = false;
-  htmlEditor = nullptr;
 
+  RefPtr<HTMLEditor> htmlEditor;
   {
     nsAutoEditingState push(this, EditingState::eSettingUp);
-
-    RefPtr<PresShell> presShell = GetPresShell();
-    NS_ENSURE_TRUE(presShell, NS_ERROR_FAILURE);
 
     // If we're entering the design mode from non-editable state, put the
     // selection at the beginning of the document for compatibility reasons.
@@ -6462,8 +6442,8 @@ nsresult Document::EditingStateChanged() {
       // Turn on editor.
       // XXX This can cause flushing which can change the editing state, so make
       //     sure to avoid recursing.
-      rv = editSession->MakeWindowEditable(window, "html", false, false, true);
-      NS_ENSURE_SUCCESS(rv, rv);
+      MOZ_TRY(
+          editSession->MakeWindowEditable(window, "html", false, false, true));
     }
 
     // XXX Need to call TearDownEditorOnWindow for all failures.
@@ -7477,6 +7457,9 @@ already_AddRefed<PresShell> Document::CreatePresShell(
     presShell->SetAuthorStyleDisabled(bc->Top()->AuthorStyleDisabledDefault());
   }
 
+  // We may need to set up the editor now if we haven't earlier, since we avoid
+  // setting up the editor without a pres shell.
+  MaybeEditingStateChanged();
   return presShell.forget();
 }
 
@@ -7526,11 +7509,6 @@ void Document::TakeVideoFrameRequestCallbacks(
     nsTArray<RefPtr<HTMLVideoElement>>& aVideoCallbacks) {
   MOZ_ASSERT(aVideoCallbacks.IsEmpty());
   mFrameRequestManager.Take(aVideoCallbacks);
-}
-
-void Document::TakeFrameRequestCallbacks(nsTArray<FrameRequest>& aCallbacks) {
-  MOZ_ASSERT(aCallbacks.IsEmpty());
-  mFrameRequestManager.Take(aCallbacks);
 }
 
 bool Document::ShouldThrottleFrameRequests() const {
@@ -14228,10 +14206,6 @@ void Document::CancelFrameRequestCallback(uint32_t aHandle) {
   mFrameRequestManager.Cancel(aHandle);
 }
 
-bool Document::IsCanceledFrameRequestCallback(uint32_t aHandle) const {
-  return mFrameRequestManager.IsCanceled(aHandle);
-}
-
 void Document::ScheduleVideoFrameCallbacks(HTMLVideoElement* aElement) {
   const bool wasEmpty = mFrameRequestManager.IsEmpty();
   mFrameRequestManager.Schedule(aElement);
@@ -17315,11 +17289,13 @@ void Document::ReportLCP() {
   timedChannel->GetResponseStart(&responseStart);
 
   if (!responseStart) {
-    return;
+    // This happens when getting a response from the cache.
+    mozilla::glean::perf::largest_contentful_paint_from_response_start
+        .AccumulateRawDuration(lcpTime - timing->GetNavigationStartTimeStamp());
+  } else {
+    mozilla::glean::perf::largest_contentful_paint_from_response_start
+        .AccumulateRawDuration(lcpTime - responseStart);
   }
-
-  mozilla::glean::perf::largest_contentful_paint_from_response_start
-      .AccumulateRawDuration(lcpTime - responseStart);
 
   if (profiler_thread_is_being_profiled_for_markers()) {
     MarkerInnerWindowId innerWindowID =
@@ -19401,7 +19377,7 @@ already_AddRefed<mozilla::dom::Promise> Document::RequestStorageAccessForOrigin(
                 }
                 if (AntiTrackingUtils::CheckStoragePermission(
                         self->NodePrincipal(), type,
-                        self->IsInPrivateBrowsing(), nullptr, 0)) {
+                        self->IsInPrivateBrowsing())) {
                   return MozPromise<int, bool, true>::CreateAndResolve(
                       true, __func__);
                 }
@@ -19733,8 +19709,7 @@ already_AddRefed<Promise> Document::CompleteStorageAccessRequestFromSite(
                       false, __func__);
             }
             if (AntiTrackingUtils::CheckStoragePermission(
-                    self->NodePrincipal(), type, self->IsInPrivateBrowsing(),
-                    nullptr, 0)) {
+                    self->NodePrincipal(), type, self->IsInPrivateBrowsing())) {
               return StorageAccessAPIHelper::
                   StorageAccessPermissionGrantPromise::CreateAndResolve(
                       StorageAccessAPIHelper::eAllowAutoGrant, __func__);

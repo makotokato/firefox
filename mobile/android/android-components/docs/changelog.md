@@ -4,7 +4,19 @@ title: Changelog
 permalink: /changelog/
 ---
 
-# 143.0 (In Development)
+# 144.0 (In Development)
+
+# 143.0
+* **feature-downloads**:
+  * `AbstractFetchDownloadService.onDestroy` will now cancel all non-completed downloads. [Bug 1977393](https://bugzilla.mozilla.org/show_bug.cgi?id=1977393)
+* **concept-engine** and **browser-engine-gecko**
+  * Added methods to get and set multiple browser preferences. [Bug 1974800](https://bugzilla.mozilla.org/show_bug.cgi?id=1974800)
+  * 🌟️ Added a mechanism to observe browser preferences changing. Use `registerPrefObserverDelegate` to register the delegate on the engine and `registerPrefForObservation` to register a specific pref for observation. Alternatively, use `BrowserPrefObserverFeature` which handles registration and broadcasts the events using an `ObserverRegistery`.
+  * Added new LNA content permissions - `ContentLocalDeviceAccess` and `ContentLocalNetworkAccess` and map to respective `GeckoSession.PermissionDelegate` permission. [Bug 1971500](https://bugzilla.mozilla.org/show_bug.cgi?id=1971500)
+  * Added `localDeviceAccess` and `localNetworkAccess` to `SitePermissions`
+* **feature-sitepermissions**
+    * Added two new columns - `local_device_access` and `local_network_access` to `site_permissions` db table
+    * Migrated `SitePermissionsDatabase` to version 9
 
 # 142.0
 * **feature-tabs**:

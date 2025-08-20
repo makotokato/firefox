@@ -34,7 +34,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -74,6 +73,8 @@ import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_OFF
 import org.mozilla.fenix.components.menu.MenuDialogTestTag.DESKTOP_SITE_ON
 import org.mozilla.fenix.components.menu.MenuDialogTestTag.EXTENSIONS
+import org.mozilla.fenix.components.menu.MenuDialogTestTag.EXTENSIONS_OPTION_CHEVRON
+import org.mozilla.fenix.components.menu.MenuDialogTestTag.MORE_OPTION_CHEVRON
 import org.mozilla.fenix.components.menu.compose.header.MenuNavHeader
 import org.mozilla.fenix.components.menu.store.WebExtensionMenuItem
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -294,7 +295,6 @@ fun MainMenu(
 }
 
 @Suppress("LongParameterList", "LongMethod")
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ExtensionsMenuItem(
     isExtensionsProcessDisabled: Boolean,
@@ -386,6 +386,11 @@ private fun ExtensionsMenuItem(
                     },
                     contentDescription = null,
                     tint = FirefoxTheme.colors.iconPrimary,
+                    modifier = Modifier.semantics {
+                        testTagsAsResourceId = true
+                        testTag = EXTENSIONS_OPTION_CHEVRON
+                    },
+
                 )
             }
         }
@@ -452,7 +457,6 @@ private fun QuitMenuGroup(
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Suppress("LongParameterList", "LongMethod")
 @Composable
 private fun ToolsAndActionsMenuGroup(
@@ -597,6 +601,10 @@ private fun MoreMenuButtonGroup(
                 },
                 contentDescription = null,
                 tint = FirefoxTheme.colors.iconPrimary,
+                modifier = Modifier.semantics {
+                    testTagsAsResourceId = true
+                    testTag = MORE_OPTION_CHEVRON
+                },
             )
         }
     }
@@ -731,7 +739,8 @@ internal fun MozillaAccountMenuItem(
         }
 
         AuthenticationProblem -> {
-            label = stringResource(id = R.string.browser_menu_sign_back_in_to_sync)
+            label = account?.displayName ?: account?.email
+                    ?: stringResource(id = R.string.browser_menu_sign_back_in_to_sync)
             description = stringResource(id = R.string.browser_menu_syncing_paused_caption)
         }
 

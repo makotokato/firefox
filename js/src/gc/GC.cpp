@@ -1633,7 +1633,7 @@ bool GCRuntime::addBlackRootsTracer(JSTraceDataOp traceOp, void* data) {
 
 void GCRuntime::removeBlackRootsTracer(JSTraceDataOp traceOp, void* data) {
   // Can be called from finalizers
-  MOZ_ALWAYS_TRUE(EraseCallback(blackRootTracers.ref(), traceOp));
+  MOZ_ALWAYS_TRUE(EraseCallback(blackRootTracers.ref(), traceOp, data));
 }
 
 void GCRuntime::setGrayRootsTracer(JSGrayRootsTracer traceOp, void* data) {
@@ -3314,8 +3314,7 @@ IncrementalProgress GCRuntime::markUntilBudgetExhausted(
     MOZ_ASSERT(reportTime);
     MOZ_ASSERT(!isBackgroundMarking());
 
-    ParallelMarker pm(this);
-    if (!pm.mark(sliceBudget)) {
+    if (!ParallelMarker::mark(this, sliceBudget)) {
       return NotFinished;
     }
 
@@ -5133,7 +5132,6 @@ void GCRuntime::waitForBackgroundTasks() {
 
   allocTask.join();
   freeTask.join();
-  nursery().joinSweepTask();
   nursery().joinDecommitTask();
 }
 
@@ -5415,10 +5413,6 @@ AutoEmptyNursery::AutoEmptyNursery(JSContext* cx) {
   cx->runtime()->gc.stats().suspendPhases();
   cx->runtime()->gc.evictNursery(JS::GCReason::EVICT_NURSERY);
   cx->runtime()->gc.stats().resumePhases();
-
-  // Also wait for nursery sweeping to end as required by gc::GetAllocSize.
-  cx->runtime()->gc.nursery().joinSweepTask();
-
   checkCondition(cx);
 }
 

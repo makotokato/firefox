@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.home.topsites
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -36,7 +35,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -58,15 +56,19 @@ import org.mozilla.fenix.compose.Favicon
 import org.mozilla.fenix.compose.MenuItem
 import org.mozilla.fenix.compose.PagerIndicator
 import org.mozilla.fenix.home.fake.FakeHomepagePreview
-import org.mozilla.fenix.home.sessioncontrol.TopSiteInteractor
 import org.mozilla.fenix.home.topsites.TopSitesTestTag.TOP_SITE_CARD_FAVICON
+import org.mozilla.fenix.home.topsites.interactor.TopSiteInteractor
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.wallpapers.WallpaperState
 import kotlin.math.ceil
 
+/**
+ * The size of a top site item.
+ */
+const val TOP_SITES_ITEM_SIZE = 84
+
 private const val TOP_SITES_PER_PAGE = 8
 private const val TOP_SITES_PER_ROW = 4
-private const val TOP_SITES_ITEM_SIZE = 84
 private const val TOP_SITES_ROW_WIDTH = TOP_SITES_PER_ROW * TOP_SITES_ITEM_SIZE
 private const val TOP_SITES_FAVICON_CARD_SIZE = 60
 private const val TOP_SITES_FAVICON_SIZE = 36
@@ -123,7 +125,6 @@ fun TopSites(
  * menu item.
  * @param onTopSitesItemBound Invoked during the composition of a top site item.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 @Suppress("LongParameterList", "LongMethod")
 fun TopSites(
@@ -299,9 +300,8 @@ data class TopSiteColors(
  * @param onTopSitesItemBound Invoked during the composition of a top site item.
  */
 @Suppress("LongMethod", "LongParameterList", "Deprecation") // https://bugzilla.mozilla.org/show_bug.cgi?id=1927713
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
-private fun TopSiteItem(
+fun TopSiteItem(
     topSite: TopSite,
     menuItems: List<MenuItem>,
     position: Int,
@@ -415,7 +415,6 @@ private fun TopSiteItem(
  * @param topSite The [TopSite] to display.
  * @param backgroundColor The background [Color] of the card.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun TopSiteFaviconCard(
     topSite: TopSite,
@@ -457,7 +456,7 @@ private fun TopSiteFavicon(url: String, imageUrl: String? = null) {
 }
 
 @Composable
-private fun getMenuItems(
+internal fun getMenuItems(
     topSite: TopSite,
     onOpenInPrivateTabClicked: (topSite: TopSite) -> Unit,
     onEditTopSiteClicked: (topSite: TopSite) -> Unit,

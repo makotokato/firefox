@@ -6,19 +6,6 @@
 
 #include "mozilla/dom/Navigation.h"
 
-#include "mozilla/dom/DOMException.h"
-#include "mozilla/dom/ErrorEvent.h"
-#include "mozilla/dom/RootedDictionary.h"
-#include "nsContentUtils.h"
-#include "nsCycleCollectionParticipant.h"
-#include "nsDocShell.h"
-#include "nsGlobalWindowInner.h"
-#include "nsIPrincipal.h"
-#include "nsIStructuredCloneContainer.h"
-#include "nsIXULRuntime.h"
-#include "nsNetUtil.h"
-#include "nsTHashtable.h"
-
 #include "jsapi.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/CycleCollectedUniquePtr.h"
@@ -26,8 +13,9 @@
 #include "mozilla/Logging.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/UniquePtr.h"
-
+#include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/FeaturePolicy.h"
 #include "mozilla/dom/NavigationActivation.h"
@@ -35,9 +23,20 @@
 #include "mozilla/dom/NavigationHistoryEntry.h"
 #include "mozilla/dom/NavigationTransition.h"
 #include "mozilla/dom/NavigationUtils.h"
+#include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/SessionHistoryEntry.h"
 #include "mozilla/dom/WindowContext.h"
 #include "mozilla/dom/WindowGlobalChild.h"
+#include "nsContentUtils.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsDocShell.h"
+#include "nsGlobalWindowInner.h"
+#include "nsIPrincipal.h"
+#include "nsISHistory.h"
+#include "nsIStructuredCloneContainer.h"
+#include "nsIXULRuntime.h"
+#include "nsNetUtil.h"
+#include "nsTHashtable.h"
 
 mozilla::LazyLogModule gNavigationLog("Navigation");
 
@@ -155,22 +154,13 @@ JSObject* Navigation::WrapObject(JSContext* aCx,
 }
 
 void Navigation::EventListenerAdded(nsAtom* aType) {
-  if (nsPIDOMWindowInner* window = GetOwnerWindow()) {
-    if (WindowGlobalChild* windowGlobal = window->GetWindowGlobalChild()) {
-      windowGlobal->NavigateAdded();
-    }
-  }
+  UpdateNeedsTraverse();
 
   EventTarget::EventListenerAdded(aType);
 }
 
 void Navigation::EventListenerRemoved(nsAtom* aType) {
-  if (nsPIDOMWindowInner* window = GetOwnerWindow()) {
-    if (WindowGlobalChild* windowGlobal = window->GetWindowGlobalChild()) {
-      windowGlobal->NavigateRemoved();
-    }
-  }
-
+  UpdateNeedsTraverse();
   EventTarget::EventListenerRemoved(aType);
 }
 
@@ -251,8 +241,10 @@ bool Navigation::HasEntriesAndEventsDisabled() const {
 void Navigation::InitializeHistoryEntries(
     mozilla::Span<const SessionHistoryInfo> aNewSHInfos,
     const SessionHistoryInfo* aInitialSHInfo) {
-  MOZ_LOG(gNavigationLog, LogLevel::Debug,
-          ("Attempting to initialize history entries."));
+  LOG_FMT("Attempting to initialize history entries for {}.",
+          aInitialSHInfo->GetURI()
+              ? aInitialSHInfo->GetURI()->GetSpecOrDefault()
+              : "<no uri>"_ns)
 
   mEntries.Clear();
   mCurrentEntryIndex.reset();
@@ -543,7 +535,8 @@ void Navigation::Navigate(JSContext* aCx, const nsAString& aUrl,
   RefPtr bc = document->GetBrowsingContext();
   MOZ_DIAGNOSTIC_ASSERT(bc);
   bc->Navigate(urlRecord, *document->NodePrincipal(),
-               /* per spec, error handling defaults to false */ IgnoreErrors());
+               /* per spec, error handling defaults to false */ IgnoreErrors(),
+               aOptions.mHistory);
 
   // 12. If this's upcoming non-traverse API method tracker is apiMethodTracker,
   //     then:
@@ -892,6 +885,8 @@ bool Navigation::InnerFireNavigateEvent(
     already_AddRefed<FormData> aFormDataEntryList,
     nsIStructuredCloneContainer* aClassicHistoryAPIState,
     const nsAString& aDownloadRequestFilename) {
+  nsCOMPtr<nsIGlobalObject> globalObject = GetOwnerGlobal();
+
   // Step 1
   if (HasEntriesAndEventsDisabled()) {
     // Step 1.1 to step 1.3
@@ -972,8 +967,7 @@ bool Navigation::InnerFireNavigateEvent(
   init.mSourceElement = aSourceElement;
 
   // Step 19
-  RefPtr<AbortController> abortController =
-      new AbortController(GetOwnerGlobal());
+  RefPtr<AbortController> abortController = new AbortController(globalObject);
 
   // Step 20
   init.mSignal = abortController->Signal();
@@ -1053,9 +1047,9 @@ bool Navigation::InnerFireNavigateEvent(
     MOZ_DIAGNOSTIC_ASSERT(fromNHE);
 
     // Step 33.4
-    RefPtr<Promise> promise = Promise::CreateInfallible(GetOwnerGlobal());
+    RefPtr<Promise> promise = Promise::CreateInfallible(globalObject);
     mTransition = MakeAndAddRef<NavigationTransition>(
-        GetOwnerGlobal(), aNavigationType, fromNHE, promise);
+        globalObject, aNavigationType, fromNHE, promise);
 
     // Step 33.5
     MOZ_ALWAYS_TRUE(promise->SetAnyPromiseIsHandled());
@@ -1095,17 +1089,22 @@ bool Navigation::InnerFireNavigateEvent(
     // Step 34.2
     for (auto& handler : event->NavigationHandlerList().Clone()) {
       // Step 34.2.1
-      promiseList.AppendElement(MOZ_KnownLive(handler)->Call());
+      RefPtr promise = MOZ_KnownLive(handler)->Call();
+      if (promise) {
+        promiseList.AppendElement(promise);
+      }
     }
 
     // Step 34.3
     if (promiseList.IsEmpty()) {
-      promiseList.AppendElement(Promise::CreateResolvedWithUndefined(
-          GetOwnerGlobal(), IgnoredErrorResult()));
+      RefPtr promise = Promise::CreateResolvedWithUndefined(
+          globalObject, IgnoredErrorResult());
+      if (promise) {
+        promiseList.AppendElement(promise);
+      }
     }
 
     // Step 34.4
-    nsCOMPtr<nsIGlobalObject> globalObject = GetOwnerGlobal();
     // We capture the scope which we wish to keep alive in the lambdas passed to
     // Promise::WaitForAll. We pass it as the cycle collected argument to
     // Promise::WaitForAll, which makes it stay alive until all promises
@@ -1263,6 +1262,9 @@ void Navigation::PromoteUpcomingAPIMethodTrackerToOngoing(
   RefPtr<Navigation> navigation =
       aNavigationAPIMethodTracker->mNavigationObject;
 
+  auto needsTraverse =
+      MakeScopeExit([navigation]() { navigation->UpdateNeedsTraverse(); });
+
   // Step 2
   if (navigation->mOngoingAPIMethodTracker == aNavigationAPIMethodTracker) {
     navigation->mOngoingAPIMethodTracker = nullptr;
@@ -1311,7 +1313,9 @@ void Navigation::AbortOngoingNavigation(JSContext* aCx,
 
   // Step 6
   if (event->IsBeingDispatched()) {
-    event->PreventDefault();
+    // Here NonSystem is needed since it needs to be the same as what we
+    // dispatch with.
+    event->PreventDefault(aCx, CallerType::NonSystem);
   }
 
   // Step 7
@@ -1361,6 +1365,43 @@ Document* Navigation::GetAssociatedDocument() const {
   return window ? window->GetDocument() : nullptr;
 }
 
+void Navigation::UpdateNeedsTraverse() {
+  nsGlobalWindowInner* innerWindow = GetOwnerWindow();
+  if (!innerWindow) {
+    return;
+  }
+
+  WindowContext* windowContext = innerWindow->GetWindowContext();
+  if (!windowContext) {
+    return;
+  }
+
+  // Since we only care about optimizing for the traversable, bail if we're not
+  // the top-level context.
+  if (BrowsingContext* browsingContext = innerWindow->GetBrowsingContext();
+      !browsingContext || !browsingContext->IsTop()) {
+    return;
+  }
+
+  // We need traverse if we have any method tracker.
+  bool needsTraverse = mOngoingAPIMethodTracker ||
+                       mUpcomingNonTraverseAPIMethodTracker ||
+                       !mUpcomingTraverseAPIMethodTrackers.IsEmpty();
+
+  // We need traverse if we have any event handlers.
+  if (EventListenerManager* eventListenerManager =
+          GetExistingListenerManager()) {
+    needsTraverse = needsTraverse || eventListenerManager->HasListeners();
+  }
+
+  // Don't toggle if nothing's changed.
+  if (windowContext->GetNeedsTraverse() == needsTraverse) {
+    return;
+  }
+
+  (void)windowContext->SetNeedsTraverse(needsTraverse);
+}
+
 void Navigation::LogHistory() const {
   if (!MOZ_LOG_TEST(gNavigationLog, LogLevel::Debug)) {
     return;
@@ -1406,6 +1447,9 @@ Navigation::MaybeSetUpcomingNonTraverseAPIMethodTracker(
   if (!HasEntriesAndEventsDisabled()) {
     mUpcomingNonTraverseAPIMethodTracker = apiMethodTracker;
   }
+
+  UpdateNeedsTraverse();
+
   // 6. Return apiMethodTracker.
   return apiMethodTracker;
 }
@@ -1433,8 +1477,12 @@ Navigation::AddUpcomingTraverseAPIMethodTracker(const nsID& aKey,
 
   // 4. Set navigation's upcoming traverse API method trackers[destinationKey]
   //    to apiMethodTracker.
+  RefPtr methodTracker =
+      mUpcomingTraverseAPIMethodTrackers.InsertOrUpdate(aKey, apiMethodTracker);
+
+  UpdateNeedsTraverse();
+
   // 5. Return apiMethodTracker.
-  return mUpcomingTraverseAPIMethodTrackers.InsertOrUpdate(aKey,
-                                                           apiMethodTracker);
+  return methodTracker;
 }
 }  // namespace mozilla::dom

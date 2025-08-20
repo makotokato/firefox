@@ -13,7 +13,8 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 const lazy = XPCOMUtils.declareLazy({
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   UrlbarUtils: "resource:///modules/UrlbarUtils.sys.mjs",
-  CustomizableUI: "resource:///modules/CustomizableUI.sys.mjs",
+  CustomizableUI:
+    "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
 });
 
 const PREF_URLBAR_BRANCH = "browser.urlbar.";
@@ -137,21 +138,6 @@ const PREF_URLBAR_DEFAULTS = /** @type {PreferenceDefinition[]} */ ([
   // amount of time in milliseconds for them to respond before timing out.
   ["extension.omnibox.timeout", 3000],
 
-  // Feature gate pref for Fakespot suggestions in the urlbar.
-  ["fakespot.featureGate", false],
-
-  // The minimum prefix length of a Fakespot keyword the user must type to
-  // trigger the suggestion. 0 means the min length should be taken from Nimbus.
-  ["fakespot.minKeywordLength", 4],
-
-  // The number of times the user has clicked the "Show less frequently" command
-  // for Fakespot suggestions.
-  ["fakespot.showLessFrequentlyCount", 0],
-
-  // The index of Fakespot results within the Firefox Suggest section. A
-  // negative index is relative to the end of the section.
-  ["fakespot.suggestedIndex", -1],
-
   // When true, `javascript:` URLs are not included in search results.
   ["filter.javascript", true],
 
@@ -167,6 +153,9 @@ const PREF_URLBAR_DEFAULTS = /** @type {PreferenceDefinition[]} */ ([
   // future.
   ["groupLabels.enabled", true],
 
+  // Feature gate pref for important-dates suggestions in the urlbar.
+  ["importantDates.featureGate", false],
+
   // Set default intent threshold value of 0.5
   ["intentThreshold", [0.5, "float"]],
 
@@ -177,6 +166,9 @@ const PREF_URLBAR_DEFAULTS = /** @type {PreferenceDefinition[]} */ ([
   // telemetry. Only applies to results with an `exposureTelemetry` value other
   // than `NONE`.
   ["keywordExposureResults", ""],
+
+  // Feature gate pref for stock market suggestions in the urlbar.
+  ["market.featureGate", false],
 
   // The minimum prefix length of a market keyword the user must type to
   // trigger the suggestion. 0 means the min length should be taken from Nimbus
@@ -472,12 +464,12 @@ const PREF_URLBAR_DEFAULTS = /** @type {PreferenceDefinition[]} */ ([
   // Whether results will include search engines (e.g. tab-to-search).
   ["suggest.engines", true],
 
-  // If `browser.urlbar.fakespot.featureGate` is true, this controls whether
-  // Fakespot suggestions are turned on.
-  ["suggest.fakespot", true],
-
   // Whether results will include the user's history.
   ["suggest.history", true],
+
+  // If `browser.urlbar.importantDates.featureGate` is true, this controls
+  // whether important-dates suggestions are turned on.
+  ["suggest.importantDates", true],
 
   // Whether results will include Market suggestions.
   ["suggest.market", true],
@@ -658,10 +650,9 @@ const PREF_OTHER_DEFAULTS = new Map([
 // defaults are the values of their fallbacks.
 const NIMBUS_DEFAULTS = {
   addonsShowLessFrequentlyCap: 0,
-  fakespotMinKeywordLength: null,
-  marketMinKeywordLength: null,
-  marketShowLessFrequentlyCap: null,
   quickSuggestScoreMap: null,
+  realtimeMinKeywordLength: null,
+  realtimeShowLessFrequentlyCap: null,
   weatherKeywordsMinimumLength: null,
   weatherShowLessFrequentlyCap: null,
   yelpMinKeywordLength: null,
@@ -902,6 +893,28 @@ class Preferences {
       throw new Error(`Invalid value type ${typeof value} for pref ${pref}`);
     }
     set(pref, value);
+  }
+
+  /**
+   * Adds a value to a preference that handles multiple comma-separated values.
+   * Throws an error if the preference does not have a comma-separated value.
+   *
+   * @param {string} pref
+   *   The name of the preference to set.
+   * @param {*} value
+   *   The preference value.
+   */
+  add(pref, value) {
+    let maybeSet = this._getPrefValue(pref);
+
+    if (!(maybeSet instanceof Set)) {
+      throw new Error(
+        `The pref ${pref} should handle the values as Set but '${typeof maybeSet}'`
+      );
+    }
+
+    maybeSet.add(value);
+    this.set(pref, [...maybeSet].join(","));
   }
 
   /**

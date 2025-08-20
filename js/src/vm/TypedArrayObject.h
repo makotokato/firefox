@@ -127,6 +127,9 @@ class TypedArrayObject : public ArrayBufferViewObject {
       JSContext* cx, Scalar::Type type,
       Handle<ArrayBufferObjectMaybeShared*> buffer);
 
+  static TypedArrayObject* GetTemplateObjectForBufferView(
+      JSContext* cx, Handle<TypedArrayObject*> bufferView);
+
   static TypedArrayObject* GetTemplateObjectForArrayLike(
       JSContext* cx, Scalar::Type type, Handle<JSObject*> arrayLike);
 
@@ -183,6 +186,8 @@ class FixedLengthTypedArrayObject : public TypedArrayObject {
     assertZeroLengthArrayData();
     return elementsRaw();
   }
+
+  bool hasMallocedElements(JSContext* cx) const;
 
 #ifdef DEBUG
   void assertZeroLengthArrayData() const;
@@ -358,9 +363,26 @@ bool TypedArraySet(JSContext* cx, TypedArrayObject* target,
 void TypedArraySetInfallible(TypedArrayObject* target, TypedArrayObject* source,
                              intptr_t offset);
 
+bool TypedArraySetFromSubarray(JSContext* cx, TypedArrayObject* target,
+                               TypedArrayObject* source, intptr_t offset,
+                               intptr_t sourceOffset, intptr_t sourceLength);
+
+void TypedArraySetFromSubarrayInfallible(TypedArrayObject* target,
+                                         TypedArrayObject* source,
+                                         intptr_t offset, intptr_t sourceOffset,
+                                         intptr_t sourceLength);
+
 TypedArrayObject* TypedArraySubarray(JSContext* cx,
                                      Handle<TypedArrayObject*> obj,
                                      intptr_t start, intptr_t end);
+
+TypedArrayObject* TypedArraySubarrayWithLength(JSContext* cx,
+                                               Handle<TypedArrayObject*> obj,
+                                               intptr_t start, intptr_t length);
+
+TypedArrayObject* TypedArraySubarrayRecover(JSContext* cx,
+                                            Handle<TypedArrayObject*> obj,
+                                            intptr_t start, intptr_t length);
 
 static inline constexpr unsigned TypedArrayShift(Scalar::Type viewType) {
   switch (viewType) {

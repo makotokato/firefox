@@ -43,6 +43,7 @@
 #include "nsString.h"
 #include "nsStyleConsts.h"
 #include "nsStyleStructInlines.h"
+#include "nsStyleStructList.h"
 #include "nsStyleUtil.h"
 
 using namespace mozilla;
@@ -64,12 +65,12 @@ struct AssertSizeIsLessThan {
   static constexpr bool instantiate = true;
 };
 
-#define STYLE_STRUCT(name_)                                                  \
+#define ASSERT_SIZE(name_)                                                   \
   static_assert(AssertSizeIsLessThan<nsStyle##name_, sizeof(nsStyle##name_), \
                                      kStyleStructSizeLimit>::instantiate,    \
                 "");
-#include "nsStyleStructList.h"
-#undef STYLE_STRUCT
+FOR_EACH_STYLE_STRUCT(ASSERT_SIZE, ASSERT_SIZE)
+#undef ASSERT_SIZE
 
 bool StyleCssUrlData::operator==(const StyleCssUrlData& aOther) const {
   // This very intentionally avoids comparing LoadData and such.
@@ -188,6 +189,7 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
       mMinFontSizeRatio(aSrc.mMinFontSizeRatio),
       mMathVariant(aSrc.mMathVariant),
       mMathStyle(aSrc.mMathStyle),
+      mMathShift(aSrc.mMathShift),
       mExplicitLanguage(aSrc.mExplicitLanguage),
       mXTextScale(aSrc.mXTextScale),
       mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize),
@@ -216,6 +218,7 @@ nsStyleFont::nsStyleFont(const Document& aDocument)
       mLineHeight(StyleLineHeight::Normal()),
       mMathVariant(StyleMathVariant::None),
       mMathStyle(StyleMathStyle::Normal),
+      mMathShift(StyleMathShift::Normal),
       mXTextScale(InitialTextScale(aDocument)),
       mScriptUnconstrainedSize(mSize),
       mScriptMinSize(Length::FromPixels(
@@ -239,7 +242,7 @@ nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aNewData) const {
   if (mSize != aNewData.mSize || mLanguage != aNewData.mLanguage ||
       mExplicitLanguage != aNewData.mExplicitLanguage ||
       mMathVariant != aNewData.mMathVariant ||
-      mMathStyle != aNewData.mMathStyle ||
+      mMathStyle != aNewData.mMathStyle || mMathShift != aNewData.mMathShift ||
       mMinFontSizeRatio != aNewData.mMinFontSizeRatio ||
       mLineHeight != aNewData.mLineHeight) {
     return NS_STYLE_HINT_REFLOW;
@@ -2917,7 +2920,9 @@ nsStyleTextReset::nsStyleTextReset()
       mUnicodeBidi(StyleUnicodeBidi::Normal),
       mInitialLetter{0, 0},
       mTextDecorationColor(StyleColor::CurrentColor()),
-      mTextDecorationThickness(StyleTextDecorationLength::Auto()) {
+      mTextDecorationThickness(StyleTextDecorationLength::Auto()),
+      mTextDecorationTrim(StyleTextDecorationTrim::Length(
+          StyleLength::Zero(), StyleLength::Zero())) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
 }
 
@@ -2928,7 +2933,8 @@ nsStyleTextReset::nsStyleTextReset(const nsStyleTextReset& aSource)
       mUnicodeBidi(aSource.mUnicodeBidi),
       mInitialLetter(aSource.mInitialLetter),
       mTextDecorationColor(aSource.mTextDecorationColor),
-      mTextDecorationThickness(aSource.mTextDecorationThickness) {
+      mTextDecorationThickness(aSource.mTextDecorationThickness),
+      mTextDecorationTrim(aSource.mTextDecorationTrim) {
   MOZ_COUNT_CTOR(nsStyleTextReset);
 }
 
@@ -2941,7 +2947,8 @@ nsChangeHint nsStyleTextReset::CalcDifference(
 
   if (mTextDecorationLine != aNewData.mTextDecorationLine ||
       mTextDecorationStyle != aNewData.mTextDecorationStyle ||
-      mTextDecorationThickness != aNewData.mTextDecorationThickness) {
+      mTextDecorationThickness != aNewData.mTextDecorationThickness ||
+      mTextDecorationTrim != aNewData.mTextDecorationTrim) {
     // Changes to our text-decoration line can impact our overflow area &
     // also our descendants' overflow areas (particularly for text-frame
     // descendants).  So, we update those areas & trigger a repaint.
@@ -3037,7 +3044,8 @@ nsStyleText::nsStyleText(const nsStyleText& aSource)
       mHyphenateCharacter(aSource.mHyphenateCharacter),
       mHyphenateLimitChars(aSource.mHyphenateLimitChars),
       mWebkitTextSecurity(aSource.mWebkitTextSecurity),
-      mTextWrapStyle(aSource.mTextWrapStyle) {
+      mTextWrapStyle(aSource.mTextWrapStyle),
+      mTextAutospace(aSource.mTextAutospace) {
   MOZ_COUNT_CTOR(nsStyleText);
 }
 
@@ -3073,7 +3081,8 @@ nsChangeHint nsStyleText::CalcDifference(const nsStyleText& aNewData) const {
       (mHyphenateCharacter != aNewData.mHyphenateCharacter) ||
       (mHyphenateLimitChars != aNewData.mHyphenateLimitChars) ||
       (mWebkitTextSecurity != aNewData.mWebkitTextSecurity) ||
-      (mTextWrapStyle != aNewData.mTextWrapStyle)) {
+      (mTextWrapStyle != aNewData.mTextWrapStyle) ||
+      (mTextAutospace != aNewData.mTextAutospace)) {
     return NS_STYLE_HINT_REFLOW;
   }
 
@@ -3165,7 +3174,6 @@ LogicalSide nsStyleText::TextEmphasisSide(WritingMode aWM,
 nsStyleUI::nsStyleUI()
     : mInert(StyleInert::None),
       mMozTheme(StyleMozTheme::Auto),
-      mUserInput(StyleUserInput::Auto),
       mUserFocus(StyleUserFocus::Normal),
       mPointerEvents(StylePointerEvents::Auto),
       mCursor{{}, StyleCursorKind::Auto},
@@ -3179,7 +3187,6 @@ nsStyleUI::nsStyleUI()
 nsStyleUI::nsStyleUI(const nsStyleUI& aSource)
     : mInert(aSource.mInert),
       mMozTheme(aSource.mMozTheme),
-      mUserInput(aSource.mUserInput),
       mUserFocus(aSource.mUserFocus),
       mPointerEvents(aSource.mPointerEvents),
       mCursor(aSource.mCursor),
@@ -3226,13 +3233,13 @@ nsChangeHint nsStyleUI::CalcDifference(const nsStyleUI& aNewData) const {
   }
 
   if (mInert != aNewData.mInert) {
-    // inert affects pointer-events, user-modify, user-select, user-focus and
-    // -moz-user-input, do the union of all them (minus
+    // inert affects pointer-events, user-select, user-focus.
+    // Do the union of all them (minus
     // nsChangeHint_NeutralChange which isn't needed if there's any other hint).
     hint |= NS_STYLE_HINT_VISUAL | kPointerEventsHint;
   }
 
-  if (mUserFocus != aNewData.mUserFocus || mUserInput != aNewData.mUserInput) {
+  if (mUserFocus != aNewData.mUserFocus) {
     hint |= nsChangeHint_NeutralChange;
   }
 

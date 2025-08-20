@@ -4,66 +4,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/BrowserParent.h"
-
 #include "nsFocusManager.h"
 
-#include "LayoutConstants.h"
-#include "ChildIterator.h"
-#include "nsIInterfaceRequestorUtils.h"
-#include "nsGkAtoms.h"
-#include "nsContentUtils.h"
-#include "ContentParent.h"
-#include "nsPIDOMWindow.h"
-#include "nsIContentInlines.h"
-#include "nsIDocShell.h"
-#include "nsIDocShellTreeOwner.h"
-#include "nsIFormControl.h"
-#include "nsLayoutUtils.h"
-#include "nsFrameTraversal.h"
-#include "nsIWebNavigation.h"
-#include "nsCaret.h"
-#include "nsIBaseWindow.h"
-#include "nsIAppWindow.h"
-#include "nsTextControlFrame.h"
-#include "nsThreadUtils.h"
-#include "nsViewManager.h"
-#include "nsFrameSelection.h"
-#include "mozilla/dom/Selection.h"
-#include "nsXULPopupManager.h"
-#include "nsMenuPopupFrame.h"
-#include "nsIScriptError.h"
-#include "nsIScriptObjectPrincipal.h"
-#include "nsIPrincipal.h"
-#include "nsIObserverService.h"
-#include "BrowserChild.h"
-#include "nsFrameLoader.h"
-#include "nsHTMLDocument.h"
-#include "nsNetUtil.h"
-#include "nsRange.h"
-#include "nsFrameLoaderOwner.h"
-#include "nsQueryObject.h"
-#include "nsIXULRuntime.h"
+#include <algorithm>
 
+#include "BrowserChild.h"
+#include "ChildIterator.h"
+#include "ContentParent.h"
+#include "LayoutConstants.h"
 #include "mozilla/AccessibleCaretEventHub.h"
 #include "mozilla/ContentEvents.h"
-#include "mozilla/FocusModel.h"
-#include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/Document.h"
-#include "mozilla/dom/DocumentInlines.h"
-#include "mozilla/dom/Element.h"
-#include "mozilla/dom/ElementBinding.h"
-#include "mozilla/dom/HTMLImageElement.h"
-#include "mozilla/dom/HTMLInputElement.h"
-#include "mozilla/dom/HTMLSlotElement.h"
-#include "mozilla/dom/HTMLAreaElement.h"
-#include "mozilla/dom/BrowserBridgeChild.h"
-#include "mozilla/dom/Text.h"
-#include "mozilla/dom/XULPopupElement.h"
-#include "mozilla/dom/WindowGlobalParent.h"
-#include "mozilla/dom/WindowGlobalChild.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStateManager.h"
+#include "mozilla/FocusModel.h"
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/LookAndFeel.h"
@@ -72,14 +25,59 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/Services.h"
-#include "mozilla/Unused.h"
 #include "mozilla/StaticPrefs_accessibility.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/Try.h"
+#include "mozilla/Unused.h"
+#include "mozilla/dom/BrowserBridgeChild.h"
+#include "mozilla/dom/BrowserParent.h"
+#include "mozilla/dom/ContentChild.h"
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/Element.h"
+#include "mozilla/dom/ElementBinding.h"
+#include "mozilla/dom/HTMLAreaElement.h"
+#include "mozilla/dom/HTMLImageElement.h"
+#include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/dom/HTMLSlotElement.h"
+#include "mozilla/dom/Selection.h"
+#include "mozilla/dom/Text.h"
+#include "mozilla/dom/WindowGlobalChild.h"
+#include "mozilla/dom/WindowGlobalParent.h"
+#include "mozilla/dom/XULPopupElement.h"
 #include "mozilla/widget/IMEData.h"
-#include <algorithm>
-
+#include "nsCaret.h"
+#include "nsContentUtils.h"
+#include "nsFrameLoader.h"
+#include "nsFrameLoaderOwner.h"
+#include "nsFrameSelection.h"
+#include "nsFrameTraversal.h"
+#include "nsGkAtoms.h"
+#include "nsHTMLDocument.h"
+#include "nsIAppWindow.h"
+#include "nsIBaseWindow.h"
+#include "nsIContentInlines.h"
 #include "nsIDOMXULMenuListElement.h"
+#include "nsIDocShell.h"
+#include "nsIDocShellTreeOwner.h"
+#include "nsIFormControl.h"
+#include "nsIInterfaceRequestorUtils.h"
+#include "nsIObserverService.h"
+#include "nsIPrincipal.h"
+#include "nsIScriptError.h"
+#include "nsIScriptObjectPrincipal.h"
+#include "nsIWebNavigation.h"
+#include "nsIXULRuntime.h"
+#include "nsLayoutUtils.h"
+#include "nsMenuPopupFrame.h"
+#include "nsNetUtil.h"
+#include "nsPIDOMWindow.h"
+#include "nsQueryObject.h"
+#include "nsRange.h"
+#include "nsTextControlFrame.h"
+#include "nsThreadUtils.h"
+#include "nsViewManager.h"
+#include "nsXULPopupManager.h"
 
 #ifdef ACCESSIBILITY
 #  include "nsAccessibilityService.h"
@@ -2686,10 +2684,10 @@ void nsFocusManager::Focus(
     // if the window isn't visible, for instance because it is a hidden tab,
     // update the current focus and scroll it into view but don't do anything
     // else
-    if (RefPtr elementToFocus = FlushAndCheckIfFocusable(aElement, aFlags)) {
-      aWindow->SetFocusedElement(elementToFocus, focusMethod);
+    if (aElement) {
+      aWindow->SetFocusedElement(aElement, focusMethod);
       if (aFocusChanged) {
-        ScrollIntoView(presShell, elementToFocus, aFlags);
+        ScrollIntoView(presShell, aElement, aFlags);
       }
     }
     return;
@@ -2727,11 +2725,11 @@ void nsFocusManager::Focus(
 
   if (aAdjustWidget && !sTestMode) {
     if (nsViewManager* vm = presShell->GetViewManager()) {
-      nsCOMPtr<nsIWidget> widget = vm->GetRootWidget();
-      if (widget)
+      if (nsCOMPtr<nsIWidget> widget = vm->GetRootWidget()) {
         widget->SetFocus(nsIWidget::Raise::No, aFlags & FLAG_NONSYSTEMCALLER
                                                    ? CallerType::NonSystem
                                                    : CallerType::System);
+      }
     }
   }
 
@@ -2764,17 +2762,15 @@ void nsFocusManager::Focus(
     }
   }
 
-  // check to ensure that the element is still focusable, and that nothing
-  // else was focused during the events above.
-  // Note that the focusing element may have already been moved to another
-  // document/window.  In that case, we should stop setting focus to it
-  // because setting focus to the new window would cause redirecting focus
-  // again and again.
-  RefPtr elementToFocus =
-      aElement && aElement->IsInComposedDoc() &&
-              aElement->GetComposedDoc() == aWindow->GetExtantDoc()
-          ? FlushAndCheckIfFocusable(aElement, aFlags)
-          : nullptr;
+  const RefPtr<Element> elementToFocus = [&]() -> Element* {
+    if (!aElement || !aElement->IsInComposedDoc() ||
+        aElement->GetComposedDoc() != aWindow->GetExtantDoc()) {
+      // Element moved documents, don't focus it to prevent redirecting focus to
+      // the wrong window.
+      return nullptr;
+    }
+    return aElement;
+  }();
   if (elementToFocus && !mFocusedElement &&
       GetFocusedBrowsingContext() == aWindow->GetBrowsingContext()) {
     mFocusedElement = elementToFocus;
@@ -4068,10 +4064,7 @@ nsIContent* nsFocusManager::GetNextTabbableContentInScope(
       }
 
       int32_t tabIndex = 0;
-      if (iterContent->IsInNativeAnonymousSubtree() &&
-          iterContent->GetPrimaryFrame()) {
-        tabIndex = iterContent->GetPrimaryFrame()->IsFocusable().mTabIndex;
-      } else if (IsHostOrSlot(iterContent)) {
+      if (IsHostOrSlot(iterContent)) {
         tabIndex = HostOrSlotTabIndexValue(iterContent);
       } else {
         nsIFrame* frame = iterContent->GetPrimaryFrame();
@@ -4094,7 +4087,6 @@ nsIContent* nsFocusManager::GetNextTabbableContentInScope(
         }
         if (!checkSubDocument) {
           if (aReachedToEndForDocumentNavigation &&
-              StaticPrefs::dom_disable_tab_focus_to_root_element() &&
               nsContentUtils::IsChromeDoc(iterContent->GetComposedDoc())) {
             // aReachedToEndForDocumentNavigation is true means
             //   1. This is a document navigation (i.e, VK_F6, Control + Tab)
@@ -4646,7 +4638,6 @@ nsresult nsFocusManager::GetNextTabbableContent(
               return NS_OK;
             }
           } else if (currentContent && aReachedToEndForDocumentNavigation &&
-                     StaticPrefs::dom_disable_tab_focus_to_root_element() &&
                      nsContentUtils::IsChromeDoc(
                          currentContent->GetComposedDoc())) {
             // aReachedToEndForDocumentNavigation is true means
@@ -4698,17 +4689,6 @@ nsresult nsFocusManager::GetNextTabbableContent(
     // If already at lowest priority tab (0), end search completely.
     // A bit counterintuitive but true, tabindex order goes 1, 2, ... 32767, 0
     if (aCurrentTabIndex == (aForward ? 0 : 1)) {
-      // if going backwards, the canvas should be focused once the beginning
-      // has been reached, so get the root element.
-      if (!aForward && !StaticPrefs::dom_disable_tab_focus_to_root_element()) {
-        nsCOMPtr<nsPIDOMWindowOuter> window = GetCurrentWindow(aRootContent);
-        NS_ENSURE_TRUE(window, NS_ERROR_FAILURE);
-
-        RefPtr<Element> docRoot = GetRootForFocus(
-            window, aRootContent->GetComposedDoc(), false, true);
-        FocusFirst(docRoot, aResultContent,
-                   false /* aReachedToEndForDocumentNavigation */);
-      }
       break;
     }
 
@@ -4756,17 +4736,6 @@ bool nsFocusManager::TryToMoveFocusToSubDocument(
   NS_ASSERTION(doc, "content not in document");
   Document* subdoc = doc->GetSubDocumentFor(aCurrentContent);
   if (subdoc && !subdoc->EventHandlingSuppressed()) {
-    if (aForward && !StaticPrefs::dom_disable_tab_focus_to_root_element()) {
-      // When tabbing forward into a frame, return the root
-      // frame so that the canvas becomes focused.
-      if (nsCOMPtr<nsPIDOMWindowOuter> subframe = subdoc->GetWindow()) {
-        *aResultContent = GetRootForFocus(subframe, subdoc, false, true);
-        if (*aResultContent) {
-          NS_ADDREF(*aResultContent);
-          return true;
-        }
-      }
-    }
     if (RefPtr<Element> rootElement = subdoc->GetRootElement()) {
       if (RefPtr<PresShell> subPresShell = subdoc->GetPresShell()) {
         nsresult rv = GetNextTabbableContent(
@@ -4778,8 +4747,7 @@ bool nsFocusManager::TryToMoveFocusToSubDocument(
         if (*aResultContent) {
           return true;
         }
-        if (rootElement->IsEditable() &&
-            StaticPrefs::dom_disable_tab_focus_to_root_element()) {
+        if (rootElement->IsEditable()) {
           // Only move to the root element with a valid reason
           *aResultContent = rootElement;
           NS_ADDREF(*aResultContent);
@@ -4932,10 +4900,8 @@ nsresult nsFocusManager::FocusFirst(Element* aRootElement,
       if (RefPtr<PresShell> presShell = doc->GetPresShell()) {
         return GetNextTabbableContent(
             presShell, aRootElement, nullptr, aRootElement, true, 1, false,
-            StaticPrefs::dom_disable_tab_focus_to_root_element()
-                ? aReachedToEndForDocumentNavigation
-                : false,
-            true, false, aReachedToEndForDocumentNavigation, aNextContent);
+            aReachedToEndForDocumentNavigation, true, false,
+            aReachedToEndForDocumentNavigation, aNextContent);
       }
     }
   }

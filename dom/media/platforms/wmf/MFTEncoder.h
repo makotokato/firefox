@@ -8,6 +8,7 @@
 #define DOM_MEDIA_PLATFORM_WMF_MFTENCODER_H
 
 #include <wrl.h>
+
 #include <deque>
 #include <functional>
 #include <queue>
@@ -61,6 +62,7 @@ class MFTEncoder final {
   HRESULT SetMediaTypes(IMFMediaType* aInputType, IMFMediaType* aOutputType);
   HRESULT SetModes(const EncoderConfig& aConfig);
   HRESULT SetBitrate(UINT32 aBitsPerSec);
+  bool IsHardwareAccelerated() const;
 
   RefPtr<EncodePromise> Encode(InputSample&& aInput);
   RefPtr<EncodePromise> Drain();

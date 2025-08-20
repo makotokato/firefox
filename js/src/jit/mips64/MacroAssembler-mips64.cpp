@@ -506,6 +506,34 @@ void MacroAssemblerMIPS64::ma_addPtrTestCarry(Condition cond, Register rd,
   }
 }
 
+void MacroAssemblerMIPS64::ma_addPtrTestSigned(Condition cond, Register rd,
+                                               Register rj, Register rk,
+                                               Label* taken) {
+  MOZ_ASSERT(cond == Assembler::Signed || cond == Assembler::NotSigned);
+
+  as_daddu(rd, rj, rk);
+  ma_b(rd, rd, taken, cond);
+}
+
+void MacroAssemblerMIPS64::ma_addPtrTestSigned(Condition cond, Register rd,
+                                               Register rj, Imm32 imm,
+                                               Label* taken) {
+  MOZ_ASSERT(cond == Assembler::Signed || cond == Assembler::NotSigned);
+
+  ma_daddu(rd, rj, imm);
+  ma_b(rd, rd, taken, cond);
+}
+
+void MacroAssemblerMIPS64::ma_addPtrTestSigned(Condition cond, Register rd,
+                                               Register rj, ImmWord imm,
+                                               Label* taken) {
+  MOZ_ASSERT(cond == Assembler::Signed || cond == Assembler::NotSigned);
+
+  SecondScratchRegisterScope scratch2(asMasm());
+  ma_li(scratch2, imm);
+  ma_addPtrTestSigned(cond, rd, rj, scratch2, taken);
+}
+
 // Subtract.
 void MacroAssemblerMIPS64::ma_dsubu(Register rd, Register rs, Imm32 imm) {
   if (Imm16::IsInSignedRange(-imm.value)) {
@@ -1132,13 +1160,23 @@ FaultingCodeOffset MacroAssemblerMIPS64::ma_ss(FloatRegister ft,
 }
 
 void MacroAssemblerMIPS64::ma_pop(FloatRegister f) {
-  as_ldc1(f, StackPointer, 0);
+  if (f.isDouble()) {
+    as_ldc1(f, StackPointer, 0);
+  } else {
+    MOZ_ASSERT(f.isSingle(), "simd128 not supported");
+    as_lwc1(f, StackPointer, 0);
+  }
   as_daddiu(StackPointer, StackPointer, sizeof(double));
 }
 
 void MacroAssemblerMIPS64::ma_push(FloatRegister f) {
   as_daddiu(StackPointer, StackPointer, -int32_t(sizeof(double)));
-  as_sdc1(f, StackPointer, 0);
+  if (f.isDouble()) {
+    as_sdc1(f, StackPointer, 0);
+  } else {
+    MOZ_ASSERT(f.isSingle(), "simd128 not supported");
+    as_swc1(f, StackPointer, 0);
+  }
 }
 
 bool MacroAssemblerMIPS64Compat::buildOOLFakeExitFrame(void* fakeReturnAddr) {

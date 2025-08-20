@@ -328,9 +328,7 @@ static bool isSecureOrTrustworthyURL(nsIURI* aURI) {
 nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
                                nsProxyInfo* aProxyInfo,
                                uint32_t aProxyResolveFlags, nsIURI* aProxyURI,
-                               uint64_t aChannelId,
-                               ExtContentPolicyType aContentPolicyType,
-                               nsILoadInfo* aLoadInfo) {
+                               uint64_t aChannelId, nsILoadInfo* aLoadInfo) {
   LOG1(("HttpBaseChannel::Init [this=%p]\n", this));
 
   MOZ_ASSERT(aURI, "null uri");
@@ -376,7 +374,7 @@ nsresult HttpBaseChannel::Init(nsIURI* aURI, uint32_t aCaps,
   if (NS_FAILED(rv)) return rv;
 
   rv = gHttpHandler->AddStandardRequestHeaders(
-      &mRequestHead, isHTTPS, aContentPolicyType,
+      &mRequestHead, isHTTPS, mLoadInfo->GetExternalContentPolicyType(),
       nsContentUtils::ShouldResistFingerprinting(this,
                                                  RFPTarget::HttpUserAgent));
   if (NS_FAILED(rv)) return rv;
@@ -3593,7 +3591,14 @@ NS_IMETHODIMP
 HttpBaseChannel::SetCookieHeaders(const nsTArray<nsCString>& aCookieHeaders) {
   if (mLoadFlags & LOAD_ANONYMOUS) return NS_OK;
 
-  if (IsBrowsingContextDiscarded()) {
+  // The loadGroup of the channel in the parent process could be null in the
+  // XPCShell content process test, see test_cookiejars_wrap.js. In this case,
+  // we cannot explicitly set the loadGroup for the parent channel because it's
+  // created from the content process. To workaround this, we add a testing pref
+  // to skip this check.
+  if (!StaticPrefs::
+          network_cookie_skip_browsing_context_check_in_parent_for_testing() &&
+      IsBrowsingContextDiscarded()) {
     return NS_OK;
   }
 

@@ -6,11 +6,12 @@
 #define CanvasRenderingContext2D_h
 
 #include <vector>
-#include "mozilla/dom/CanvasRenderingContext2DBinding.h"
-#include "mozilla/dom/HTMLCanvasElement.h"
-#include "mozilla/intl/Bidi.h"
-#include "mozilla/gfx/Rect.h"
-#include "mozilla/gfx/2D.h"
+
+#include "FilterDescription.h"
+#include "gfx2DGlue.h"
+#include "gfxFontConstants.h"
+#include "gfxTextRun.h"
+#include "gfxUtils.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EnumeratedArray.h"
@@ -20,15 +21,15 @@
 #include "mozilla/SurfaceFromElementResult.h"
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/UniquePtr.h"
-#include "FilterDescription.h"
-#include "gfx2DGlue.h"
-#include "gfxFontConstants.h"
-#include "gfxTextRun.h"
-#include "gfxUtils.h"
-#include "nsICanvasRenderingContextInternal.h"
+#include "mozilla/dom/CanvasRenderingContext2DBinding.h"
+#include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/gfx/Rect.h"
+#include "mozilla/intl/Bidi.h"
 #include "nsColor.h"
-#include "nsRFPService.h"
+#include "nsICanvasRenderingContextInternal.h"
 #include "nsIFrame.h"
+#include "nsRFPService.h"
 
 class gfxFontGroup;
 class nsGlobalWindowInner;
@@ -498,9 +499,10 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   NS_IMETHOD InitializeWithDrawTarget(
       nsIDocShell* aShell, NotNull<gfx::DrawTarget*> aTarget) override;
 
-  NS_IMETHOD GetInputStream(const char* aMimeType,
-                            const nsAString& aEncoderOptions,
-                            nsIInputStream** aStream) override;
+  NS_IMETHOD GetInputStream(
+      const char* aMimeType, const nsAString& aEncoderOptions,
+      mozilla::CanvasUtils::ImageExtraction aExtractionBehavior,
+      nsIInputStream** aStream) override;
 
   already_AddRefed<mozilla::gfx::SourceSurface> GetOptimizedSnapshot(
       mozilla::gfx::DrawTarget* aTarget, gfxAlphaType* aOutAlphaType) override;
@@ -592,6 +594,7 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   }
 
   virtual UniquePtr<uint8_t[]> GetImageBuffer(
+      mozilla::CanvasUtils::ImageExtraction aExtractionBehavior,
       int32_t* out_format, gfx::IntSize* out_imageSize) override;
 
   void OnShutdown();

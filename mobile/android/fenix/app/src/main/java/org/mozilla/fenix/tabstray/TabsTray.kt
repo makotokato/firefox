@@ -2,11 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@file:OptIn(ExperimentalFoundationApi::class)
-
 package org.mozilla.fenix.tabstray
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -140,7 +137,7 @@ fun TabsTray(
 ) {
     val tabsTrayState by tabsTrayStore.observeAsState(initialValue = tabsTrayStore.state) { it }
     val pagerState = rememberPagerState(
-        initialPage = Page.pageToPosition(tabsTrayState.selectedPage),
+        initialPage = Page.pageToPosition(page = tabsTrayState.selectedPage, enhancementsEnabled = false),
         pageCount = { Page.entries.size },
     )
     val isInMultiSelectMode by remember(tabsTrayState.mode) {
@@ -161,7 +158,9 @@ fun TabsTray(
     }
 
     LaunchedEffect(tabsTrayState.selectedPage) {
-        pagerState.animateScrollToPage(Page.pageToPosition(tabsTrayState.selectedPage))
+        pagerState.animateScrollToPage(
+            page = Page.pageToPosition(page = tabsTrayState.selectedPage, enhancementsEnabled = false),
+        )
     }
 
     Column(
@@ -216,7 +215,7 @@ fun TabsTray(
                 beyondViewportPageCount = 2,
                 userScrollEnabled = false,
             ) { position ->
-                when (Page.positionToPage(position)) {
+                when (Page.positionToPage(position = position, enhancementsEnabled = false)) {
                     Page.NormalTabs -> {
                         NormalTabsPage(
                             normalTabs = tabsTrayState.normalTabs,

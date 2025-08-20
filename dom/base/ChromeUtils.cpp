@@ -8,9 +8,12 @@
 
 #include "JSOracleParent.h"
 #include "ThirdPartyUtil.h"
+#include "VsyncSource.h"
+#include "WrapperFactory.h"
+#include "imgLoader.h"
 #include "js/CallAndConstruct.h"  // JS::Call
-#include "js/ColumnNumber.h"  // JS::TaggedColumnNumberOneOrigin, JS::ColumnNumberOneOrigin
 #include "js/CharacterEncoding.h"
+#include "js/ColumnNumber.h"  // JS::TaggedColumnNumberOneOrigin, JS::ColumnNumberOneOrigin
 #include "js/Date.h"                // JS::IsISOStyleDate
 #include "js/Object.h"              // JS::GetClass
 #include "js/PropertyAndElement.h"  // JS_DefineProperty, JS_DefinePropertyById, JS_Enumerate, JS_GetProperty, JS_GetPropertyById, JS_SetProperty, JS_SetPropertyById, JS::IdVector
@@ -18,71 +21,66 @@
 #include "js/SavedFrameAPI.h"
 #include "js/Value.h"  // JS::Value, JS::StringValue
 #include "jsfriendapi.h"
-#include "WrapperFactory.h"
-
+#include "mozJSModuleLoader.h"
 #include "mozilla/Base64.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/ErrorNames.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/FormAutofillNative.h"
 #include "mozilla/IntentionalCrash.h"
+#include "mozilla/KeySystemConfig.h"
 #include "mozilla/PerfStats.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProcInfo.h"
+#include "mozilla/ProfilerLabels.h"
+#include "mozilla/ProfilerMarkers.h"
+#include "mozilla/RemoteMediaManagerChild.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ScrollingMetrics.h"
 #include "mozilla/SharedStyleSheetCache.h"
-#include "mozilla/dom/SharedScriptCache.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/WheelHandlingHelper.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/IdleDeadline.h"
 #include "mozilla/dom/InProcessParent.h"
 #include "mozilla/dom/JSActorService.h"
 #include "mozilla/dom/MediaSessionBinding.h"
 #include "mozilla/dom/PBrowserParent.h"
-#include "mozilla/dom/Performance.h"
 #include "mozilla/dom/PopupBlocker.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/Record.h"
 #include "mozilla/dom/ReportingHeader.h"
+#include "mozilla/dom/SharedScriptCache.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/WindowBinding.h"  // For IdleRequestCallback/Options
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/WorkerScope.h"
+#include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
-#include "mozilla/ipc/UtilityProcessSandboxing.h"
-#include "mozilla/ipc/UtilityProcessManager.h"
 #include "mozilla/ipc/UtilityProcessHost.h"
+#include "mozilla/ipc/UtilityProcessManager.h"
+#include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/net/UrlClassifierFeatureFactory.h"
-#include "mozilla/RemoteMediaManagerChild.h"
-#include "mozilla/KeySystemConfig.h"
-#include "mozilla/WheelHandlingHelper.h"
-#include "nsRFPTargetSetIDL.h"
-#include "nsIRFPTargetSetIDL.h"
-#include "nsIWidget.h"
-#include "nsString.h"
-#include "nsNativeTheme.h"
-#include "nsThreadUtils.h"
-#include "mozJSModuleLoader.h"
-#include "mozilla/ProfilerLabels.h"
-#include "mozilla/ProfilerMarkers.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsIException.h"
-#include "VsyncSource.h"
-#include "imgLoader.h"
+#include "nsIRFPTargetSetIDL.h"
+#include "nsIWidget.h"
+#include "nsNativeTheme.h"
+#include "nsRFPTargetSetIDL.h"
+#include "nsString.h"
+#include "nsThreadUtils.h"
 
 #ifdef XP_UNIX
 #  include <errno.h>
-#  include <unistd.h>
 #  include <fcntl.h>
 #  include <poll.h>
 #  include <sys/wait.h>
+#  include <unistd.h>
 
 #  ifdef XP_LINUX
 #    include <sys/prctl.h>
@@ -279,31 +277,9 @@ void ChromeUtils::AddProfilerMarker(
     }
   }
   if (startTime) {
-    RefPtr<Performance> performance;
-
-    if (NS_IsMainThread()) {
-      nsCOMPtr<nsPIDOMWindowInner> ownerWindow =
-          do_QueryInterface(aGlobal.GetAsSupports());
-      if (ownerWindow) {
-        performance = ownerWindow->GetPerformance();
-      }
-    } else {
-      JSContext* cx = aGlobal.Context();
-      WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(cx);
-      if (workerPrivate) {
-        performance = workerPrivate->GlobalScope()->GetPerformance();
-      }
-    }
-
-    if (performance) {
-      options.Set(MarkerTiming::IntervalUntilNowFrom(
-          performance->CreationTimeStamp() +
-          TimeDuration::FromMilliseconds(startTime)));
-    } else {
-      options.Set(MarkerTiming::IntervalUntilNowFrom(
-          TimeStamp::ProcessCreation() +
-          TimeDuration::FromMilliseconds(startTime)));
-    }
+    options.Set(MarkerTiming::IntervalUntilNowFrom(
+        TimeStamp::ProcessCreation() +
+        TimeDuration::FromMilliseconds(startTime)));
   }
 
   if (innerWindowId) {
@@ -2504,6 +2480,11 @@ bool ChromeUtils::IsDarkBackground(GlobalObject&, Element& aElement) {
 }
 
 double ChromeUtils::DateNow(GlobalObject&) { return JS_Now() / 1000.0; }
+
+/* static */
+double ChromeUtils::Now(GlobalObject&) {
+  return (TimeStamp::Now() - TimeStamp::ProcessCreation()).ToMilliseconds();
+}
 
 /* static */
 void ChromeUtils::EnsureJSOracleStarted(GlobalObject&) {

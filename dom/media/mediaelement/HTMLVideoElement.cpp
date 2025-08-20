@@ -12,36 +12,35 @@
 #ifdef MOZ_WEBRTC
 #  include "mozilla/dom/RTCStatsReport.h"
 #endif
-#include "nsGenericHTMLElement.h"
-#include "nsGkAtoms.h"
-#include "nsSize.h"
-#include "nsError.h"
-#include "nsIHttpChannel.h"
-#include "nsNodeInfoManager.h"
-#include "plbase64.h"
-#include "prlock.h"
-#include "nsRFPService.h"
-#include "nsThreadUtils.h"
-#include "ImageContainer.h"
-#include "VideoFrameContainer.h"
-#include "VideoOutput.h"
+#include <algorithm>
+#include <limits>
 
 #include "FrameStatistics.h"
-#include "MediaError.h"
+#include "ImageContainer.h"
 #include "MediaDecoder.h"
 #include "MediaDecoderStateMachine.h"
+#include "MediaError.h"
+#include "VideoFrameContainer.h"
+#include "VideoOutput.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/dom/WakeLock.h"
-#include "mozilla/dom/power/PowerManagerService.h"
+#include "mozilla/StaticPrefs_media.h"
+#include "mozilla/Unused.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/TimeRanges.h"
 #include "mozilla/dom/VideoPlaybackQuality.h"
 #include "mozilla/dom/VideoStreamTrack.h"
-#include "mozilla/StaticPrefs_media.h"
-#include "mozilla/Unused.h"
-
-#include <algorithm>
-#include <limits>
+#include "mozilla/dom/WakeLock.h"
+#include "mozilla/dom/power/PowerManagerService.h"
+#include "nsError.h"
+#include "nsGenericHTMLElement.h"
+#include "nsGkAtoms.h"
+#include "nsIHttpChannel.h"
+#include "nsNodeInfoManager.h"
+#include "nsRFPService.h"
+#include "nsSize.h"
+#include "nsThreadUtils.h"
+#include "plbase64.h"
+#include "prlock.h"
 
 extern mozilla::LazyLogModule gMediaElementLog;
 #define LOG(msg, ...)                        \
@@ -697,11 +696,9 @@ void HTMLVideoElement::ResetState() {
   mLastPresentedFrameID = layers::kContainerFrameID_Invalid;
 }
 
-void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
+bool HTMLVideoElement::WillFireVideoFrameCallbacks(
     const TimeStamp& aNowTime, const Maybe<TimeStamp>& aNextTickTime,
-    VideoFrameCallbackMetadata& aMd, nsTArray<VideoFrameRequest>& aCallbacks) {
-  MOZ_ASSERT(aCallbacks.IsEmpty());
-
+    VideoFrameCallbackMetadata& aMd) {
   // Attempt to find the next image to be presented on this tick. Note that
   // composited will be accurate only if the element is visible.
   AutoTArray<ImageContainer::OwningImage, 4> images;
@@ -712,7 +709,7 @@ void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
   // If we did not find any current images, we must have fired too early, or we
   // are in the process of shutting down. Wait for the next invalidation.
   if (images.IsEmpty()) {
-    return;
+    return false;
   }
 
   // We are guaranteed that the images are in timestamp order. It is possible we
@@ -745,7 +742,7 @@ void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
   // fired too early. Wait for the next invalidation.
   if (!selected || selected->mFrameID == layers::kContainerFrameID_Invalid ||
       selected->mFrameID == mLastPresentedFrameID) {
-    return;
+    return false;
   }
 
   // If we have got a dummy frame, then we must have suspended decoding and have
@@ -753,7 +750,7 @@ void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
   // requesting a callback, and the media state machine advancing.
   gfx::IntSize frameSize = selected->mImage->GetSize();
   if (NS_WARN_IF(frameSize.IsEmpty())) {
-    return;
+    return false;
   }
 
   // If we have already displayed the expected frame, we need to make the
@@ -853,11 +850,11 @@ void HTMLVideoElement::TakeVideoFrameRequestCallbacks(
   // many frames we have advanced.
   aMd.mPresentedFrames = mPresentedFrames;
 
-  mVideoFrameRequestManager.Take(aCallbacks);
-
   NS_DispatchToMainThread(NewRunnableMethod(
       "HTMLVideoElement::FinishedVideoFrameRequestCallbacks", this,
       &HTMLVideoElement::FinishedVideoFrameRequestCallbacks));
+
+  return true;
 }
 
 void HTMLVideoElement::FinishedVideoFrameRequestCallbacks() {
@@ -878,10 +875,6 @@ uint32_t HTMLVideoElement::RequestVideoFrameCallback(
     NotifyDecoderActivityChanges();
   }
   return handle;
-}
-
-bool HTMLVideoElement::IsVideoFrameCallbackCancelled(uint32_t aHandle) {
-  return mVideoFrameRequestManager.IsCanceled(aHandle);
 }
 
 void HTMLVideoElement::CancelVideoFrameCallback(uint32_t aHandle) {

@@ -1615,15 +1615,10 @@
 # See bug 1790641
 - name: browser.download.enableDeletePrivate
   type: bool
-  value: false
+  value: true
   mirror: always
 
 - name: browser.download.deletePrivate
-  type: bool
-  value: false
-  mirror: always
-
-- name: browser.download.deletePrivateChosen
   type: bool
   value: false
   mirror: always
@@ -2212,6 +2207,14 @@
   value: false
   mirror: always
 
+# If true, we'll use the triggering principal rather than the loading principal
+# when doing CORS checks.  This might be needed for WebExtensions to load their
+# own resources from content that they inject into sites.
+- name: content.cors.use_triggering_principal
+  type: bool
+  value: false
+  mirror: always
+
 # Back off timer notification after count.
 # -1 means never.
 - name: content.notify.backoffcount
@@ -2640,7 +2643,7 @@
 # Enable extra cookie-store properties
 - name: dom.cookieStore.extra.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 # Is support for CSSPseudoElement enabled?
@@ -3324,6 +3327,15 @@
   mirror: once
 #endif
 
+#if defined(XP_DARWIN)
+# Whether or not to use the mach-based IPC backend on macOS/iOS.
+# Only read once at startup by IOThreadParent's constructor.
+- name: dom.ipc.backend.mach
+  type: bool
+  value: @IS_IOS@
+  mirror: never
+#endif
+
 #ifdef MOZ_WIDGET_GTK
 #
 # Avoid the use of GTK in content processes if possible, by running
@@ -3640,7 +3652,7 @@
 # Enable ParentNode.moveBefore().
 - name: dom.movebefore.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Whether to dispatch mutation events.
@@ -3927,7 +3939,7 @@
 # See bug 1953860 for background and additional details.
 - name: dom.quotaManager.loadQuotaFromSecondaryCache
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # Should we check build ID as part of the cache validation?
@@ -4062,7 +4074,7 @@
 # L2 cache to all users on all platforms in the release channel.
 - name: dom.quotaManager.originInitialization.updateOriginMetadata
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
 
 # A pref that is used to slow down origin initialization for testing purposes.
@@ -4714,7 +4726,7 @@
 
 - name: dom.workers.throttling.enabled
   type: bool
-  value: @IS_NIGHTLY_BUILD@
+  value: @IS_EARLY_BETA_OR_EARLIER@
   mirror: once
 
 - name: dom.workers.serialized-sab-access
@@ -5535,6 +5547,12 @@
 #endif
   mirror: always
 
+# Whether WebGPU's GPUExternalTexture API is enabled.
+- name: dom.webgpu.external-texture.enabled
+  type: bool
+  value: false
+  mirror: once
+
 # For testing purposes, crash if we don't get a hardware adapter.
 - name: dom.webgpu.testing.assert-hardware-adapter
   type: RelaxedAtomicBool
@@ -5746,12 +5764,6 @@
 - name: dom.resize_observer.support_fragments
   type: bool
   value: false
-  mirror: always
-
-# Whether allowing using <tab> to move focus to root elements
-- name: dom.disable_tab_focus_to_root_element
-  type: bool
-  value: true
   mirror: always
 
 # Whether or not the `Origin-Agent-Cluster` HTTP header is enabled.
@@ -8694,6 +8706,14 @@
   mirror: always
   do_not_use_directly: true
 
+# Whether object fuses are used to optimize constant properties on the global
+# object.
+- name: javascript.options.objectfuse_for_global
+  type: bool
+  value: true
+  mirror: always
+  set_spidermonkey_pref: startup
+
 - name: javascript.options.compact_on_user_inactive
   type: bool
   value: true
@@ -8907,12 +8927,6 @@
 
 # Dictionary Teleporting
 - name: javascript.options.experimental.dictionary_teleporting
-  type: bool
-  value: true
-  mirror: always
-  set_spidermonkey_pref: always
-
-- name: javascript.options.experimental.import_attributes
   type: bool
   value: true
   mirror: always
@@ -9716,13 +9730,6 @@
   mirror: always
   rust: true
 
-# Whether the `-moz-user-input` property is exposed to content.
-- name: layout.css.moz-user-input.enabled
-  type: RelaxedAtomicBool
-  value: false
-  mirror: always
-  rust: true
-
 # Whether the `-moz-appearance` property is exposed to content.
 - name: layout.css.moz-appearance.enabled
   type: RelaxedAtomicBool
@@ -9945,7 +9952,7 @@
 #   2 - also fonts from optional language packs
 #   3 - also user-installed fonts
 - name: layout.css.font-visibility
-  type: int32_t
+  type: RelaxedAtomicInt32
   value: 3
   mirror: always
 
@@ -10290,6 +10297,13 @@
   value: false
   mirror: always
 
+# Is support for CSS text-autospace property enabled?
+# https://drafts.csswg.org/css-text-4/#text-autospace-property
+- name: layout.css.text-autospace.enabled
+  type: bool
+  value: false
+  mirror: always
+
 # Maximum number of lines to try balancing.
 - name: layout.css.text-wrap-balance.limit
   type: int32_t
@@ -10305,6 +10319,12 @@
   type: bool
   value: true
   mirror: always
+
+- name: layout.css.text-decoration-trim.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+  rust: true
 
 # Support for the css Zoom property.
 - name: layout.css.zoom.enabled
@@ -10697,7 +10717,7 @@
 # Is support for the ::details-content pseudo-element enabled?
 - name: layout.css.details-content.enabled
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
   rust: true
 
@@ -10838,7 +10858,7 @@
 # The modern behavior is 'false', i.e. not forcing it to be a block.
 - name: layout.details.force-block-layout
   type: bool
-  value: @IS_NOT_NIGHTLY_BUILD@
+  value: false
   mirror: always
 
 # Whether table cells can generate scroll boxes.
@@ -10886,13 +10906,6 @@
   value: @IS_NIGHTLY_BUILD@
   mirror: always
 
-# Whether to disable support for stretching operators with STIXGeneral fonts.
-# macos still has the deprecated STIXGeneral font pre-installed.
-- name: mathml.stixgeneral_operator_stretching.disabled
-  type: bool
-  value: true
-  mirror: always
-
 # Whether to render all unknown mathml elements as <mrow>
 - name: mathml.unknown_mrow.enabled
   type: bool
@@ -10909,6 +10922,12 @@
 #else
   value: true
 #endif
+  mirror: always
+
+# Whether to enable support for the math-shift CSS property.
+- name: mathml.math_shift.enabled
+  type: RelaxedAtomicBool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Whether to disable the MathML3 support for the mathvariant attribute. For
@@ -12653,7 +12672,7 @@
  # pref works only when enabling the pref `media.geckoview.autoplay.request`.
  # 0=prompt as normal, 1=allow all, 2=deny all, 3=allow audible request,
  # 4=deny audible request, 5=allow inaudible request, 6=deny inaudible request.
- # 7=leave all requests pending.
+ # 7=leave all requests pending, 8=asynchronous allow all
 - name: media.geckoview.autoplay.request.testing
   type: uint32_t
   value: 0
@@ -13530,7 +13549,7 @@
 # actually treat localhost as a secure origin.
 - name: network.proxy.testing_localhost_is_secure_when_hijacked
   type: RelaxedAtomicBool
-  value: false
+  value: true
   mirror: always
 
 # The timeout used when calling DhcpRequestParams. The call may sometimes hang
@@ -14157,7 +14176,7 @@
 # a revalidation in the background.
 - name: network.dnsCacheExpirationGracePeriod
   type: RelaxedAtomicUint32
-  value: 60
+  value: 600
   mirror: always
 
 # This preference can be used to turn off DNS prefetch.
@@ -15106,6 +15125,22 @@
   mirror: always
   rust: true
 
+# Whether to enable Zstd for H3/QUIC certificate compression.
+# Has no effect unless security.tls.enable_certificate_compression_zstd is true.
+- name: network.http.http3.enable_certificate_compression_zstd
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+  rust: true
+
+# Whether to enable Brotli for H3/QUIC certificate compression.
+# Has no effect unless security.tls.enable_certificate_compression_brotli is true.
+- name: network.http.http3.enable_certificate_compression_brotli
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+  rust: true
+
 # When true, skip alt-svc validation when the connection is made using HTTPS RR.
 - name: network.http.skip_alt_svc_validation_on_https_rr
   type: RelaxedAtomicBool
@@ -15565,11 +15600,6 @@
 - name: places.frecency.pages.alternative.featureGate
   type: bool
   value: false
-  mirror: once
-
-- name: places.frecency.pages.alternative.maxDaysFromToday
-  type: uint32_t
-  value: 60
   mirror: once
 
 - name: places.frecency.pages.alternative.veryHighWeight
@@ -16550,6 +16580,28 @@
   value: true
   mirror: always
 
+# A temporary pref that will be removed when the dialog in 1979341 is removed
+# Needed for early enforcement of a user-initiated block action
+- name: security.block_parent_unrestricted_js_loads.temporary
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# A temporary pref that will be removed when the dialog in 1979341 is removed
+# Disables the notification bar and dialog
+- name: security.hide_parent_unrestricted_js_loads_warning.temporary
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
+# A pref needed for testing: xpinstall.signatures.required is disabled
+# for Marionette, which trips the JSHacks detection and disables our script
+# protections, so this pref skips the JSHacks check
+- name: security.parent_unrestricted_js_loads.skip_jshacks
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 # Don't enable this! This is only meant for legacy tests.
 - name: security.allow_eval_with_system_principal
   type: RelaxedAtomicBool
@@ -16917,21 +16969,6 @@
 - name: security.pki.cert_short_lifetime_in_days
   type: RelaxedAtomicUint32
   value: 10
-  mirror: always
-
-# security.pki.netscape_step_up_policy controls how the platform handles the
-# id-Netscape-stepUp OID in extended key usage extensions of CA certificates.
-# 0: id-Netscape-stepUp is always considered equivalent to id-kp-serverAuth
-# 1: it is considered equivalent when the notBefore is before 23 August 2016
-# 2: similarly, but for 23 August 2015
-# 3: it is never considered equivalent
-- name: security.pki.netscape_step_up_policy
-  type: RelaxedAtomicUint32
-#ifdef RELEASE_OR_BETA
-  value: 1
-#else
-  value: 2
-#endif
   mirror: always
 
 # Configures Certificate Transparency support mode:
@@ -17998,6 +18035,15 @@
   type: RelaxedAtomicBool
   value: false
   mirror: always
+
+# Enable classification for safebrowsing and anti-tracking
+# 0 -> disabled, 1 -> anti-tracking only, 2 -> safe-browsing only, 3 -> enabled
+# see netwerk/base/nsNetUtil.cpp for C++ enum
+- name: urlclassifier.enabled_mode
+  type: RelaxedAtomicUint32
+  value: 3
+  mirror: always
+
 #---------------------------------------------------------------------------
 # Prefs starting with "view_source."
 #---------------------------------------------------------------------------

@@ -6,22 +6,24 @@
 #ifndef mozilla_dom_HTMLMediaElement_h
 #define mozilla_dom_HTMLMediaElement_h
 
-#include "nsGenericHTMLElement.h"
+#include <utility>
+
 #include "AudioChannelService.h"
-#include "MediaEventSource.h"
-#include "SeekTarget.h"
+#include "DecoderTraits.h"
 #include "MediaDecoderOwner.h"
 #include "MediaElementEventRunners.h"
+#include "MediaEventSource.h"
 #include "MediaPlaybackDelayPolicy.h"
 #include "MediaPromiseDefs.h"
+#include "MediaSegment.h"  // for PrincipalHandle, GraphTime
 #include "MediaTimer.h"
+#include "PrincipalChangeObserver.h"
+#include "SeekTarget.h"
 #include "TelemetryProbesReporter.h"
-#include "nsCycleCollectionParticipant.h"
 #include "Visibility.h"
-#include "mozilla/CORSMode.h"
-#include "DecoderTraits.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/AwakeTimeStamp.h"
+#include "mozilla/CORSMode.h"
 #include "mozilla/StateWatching.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/dom/DecoderDoctorNotificationBinding.h"
@@ -29,12 +31,10 @@
 #include "mozilla/dom/MediaDebugInfoBinding.h"
 #include "mozilla/dom/MediaKeys.h"
 #include "mozilla/dom/TextTrackManager.h"
+#include "nsCycleCollectionParticipant.h"
+#include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
-#include "PrincipalChangeObserver.h"
 #include "nsStubMutationObserver.h"
-#include "MediaSegment.h"  // for PrincipalHandle, GraphTime
-
-#include <utility>
 
 // X.h on Linux #defines CurrentTime as 0L, so we have to #undef it here.
 #ifdef CurrentTime
@@ -354,6 +354,12 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   void CheckAutoplayDataReady();
 
   void RunAutoplay();
+
+  // Start listening for async GV autoplay permission request results.
+  void StartObservingGVAutoplayIfNeeded();
+
+  // Stops listening for async GV autoplay permissions if observer exists.
+  void StopObservingGVAutoplayIfNeeded();
 
   // Check if the media element had crossorigin set when loading started
   bool ShouldCheckAllowOrigin();
@@ -867,6 +873,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   class AudioChannelAgentCallback;
   class ChannelLoader;
   class ErrorSink;
+  class GVAutoplayObserver;
   class MediaElementTrackSource;
   class MediaLoadListener;
   class MediaStreamRenderer;
@@ -1491,6 +1498,9 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   // The currently selected video stream track.
   RefPtr<VideoStreamTrack> mSelectedVideoStreamTrack;
+
+  // Created in Init() and AfterSetAttr(), released in deconstructor
+  RefPtr<GVAutoplayObserver> mGVAutoplayObserver;
 
   const RefPtr<ShutdownObserver> mShutdownObserver;
 

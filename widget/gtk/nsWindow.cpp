@@ -220,10 +220,9 @@ static gboolean leave_notify_event_cb(GtkWidget* widget,
                                       GdkEventCrossing* event);
 static gboolean motion_notify_event_cb(GtkWidget* widget,
                                        GdkEventMotion* event);
-MOZ_CAN_RUN_SCRIPT static gboolean button_press_event_cb(GtkWidget* widget,
-                                                         GdkEventButton* event);
-static gboolean button_release_event_cb(GtkWidget* widget,
-                                        GdkEventButton* event);
+static gboolean button_press_event_cb(GtkWidget* widget, GdkEventButton* event);
+MOZ_CAN_RUN_SCRIPT static gboolean button_release_event_cb(
+    GtkWidget* widget, GdkEventButton* event);
 static gboolean focus_in_event_cb(GtkWidget* widget, GdkEventFocus* event);
 static gboolean focus_out_event_cb(GtkWidget* widget, GdkEventFocus* event);
 static gboolean key_press_event_cb(GtkWidget* widget, GdkEventKey* event);
@@ -7379,8 +7378,15 @@ void nsWindow::SetWindowDecoration(BorderStyle aStyle) {
     wasVisible = true;
   }
 
-  gtk_window_set_decorated(GTK_WINDOW(mShell),
-                           !mUndecorated && aStyle != BorderStyle::None);
+  const bool decorated = !mUndecorated && aStyle != BorderStyle::None;
+  gtk_window_set_decorated(GTK_WINDOW(mShell), decorated);
+
+  if (!decorated) {
+    // Work around for https://gitlab.gnome.org/GNOME/gtk/-/merge_requests/8875,
+    // window shadow doesn't update on Wayland after removing window
+    // decorations. This doesn't seem like it'd affect GTK4.
+    gdk_window_set_shadow_width(GetToplevelGdkWindow(), 0, 0, 0, 0);
+  }
 
   gint wmd = ConvertBorderStyles(aStyle);
   if (wmd != -1) {
@@ -7497,11 +7503,9 @@ bool nsWindow::DragInProgress() {
 // info about finished D&D operations and cancel it on our own.
 MOZ_CAN_RUN_SCRIPT static void WaylandDragWorkaround(nsWindow* aWindow,
                                                      GdkEventButton* aEvent) {
-  static int buttonPressCountWithDrag = 0;
-
   // We track only left button state as Firefox performs D&D on left
   // button only.
-  if (aEvent->button != 1 || aEvent->type != GDK_BUTTON_PRESS) {
+  if (aEvent->button != 1 || aEvent->type != GDK_BUTTON_RELEASE) {
     return;
   }
 
@@ -7512,25 +7516,23 @@ MOZ_CAN_RUN_SCRIPT static void WaylandDragWorkaround(nsWindow* aWindow,
   }
   nsCOMPtr<nsIDragSession> currentDragSession =
       dragService->GetCurrentSession(aWindow);
-
-  if (!currentDragSession) {
-    buttonPressCountWithDrag = 0;
+  if (!currentDragSession ||
+      static_cast<nsDragSession*>(currentDragSession.get())->IsActive()) {
     return;
   }
 
-  buttonPressCountWithDrag++;
-  if (buttonPressCountWithDrag > 1) {
-    LOGDRAG(
-        "WaylandDragWorkaround applied [buttonPressCountWithDrag %d], quit D&D "
-        "session",
-        buttonPressCountWithDrag);
-
-    NS_WARNING(
-        "Quit unfinished Wayland Drag and Drop operation. Buggy Wayland "
-        "compositor?");
-    buttonPressCountWithDrag = 0;
-    currentDragSession->EndDragSession(true, 0);
-  }
+  LOGDRAG("WaylandDragWorkaround applied, quit D&D session");
+  NS_WARNING(
+      "Quit unfinished Wayland Drag and Drop operation. Buggy Wayland "
+      "compositor?");
+#if defined(NIGHTLY_BUILD)
+  // Terminate as drag failed in Nightly. That led to rather critical
+  // Bug 1955112 before, let's try again after workaround update
+  // at Bug 1979719 but definitely not test on release/beta.
+  currentDragSession->EndDragSession(false, 0);
+#else
+  currentDragSession->EndDragSession(true, 0);
+#endif
 }
 
 static nsWindow* get_window_for_gtk_widget(GtkWidget* widget) {
@@ -8178,10 +8180,6 @@ static gboolean button_press_event_cb(GtkWidget* widget,
 
   window->OnButtonPressEvent(event);
 
-  if (GdkIsWaylandDisplay()) {
-    WaylandDragWorkaround(window, event);
-  }
-
   return TRUE;
 }
 
@@ -8199,6 +8197,10 @@ static gboolean button_release_event_cb(GtkWidget* widget,
   }
 
   window->OnButtonReleaseEvent(event);
+
+  if (GdkIsWaylandDisplay()) {
+    WaylandDragWorkaround(window, event);
+  }
 
   return TRUE;
 }
@@ -8521,6 +8523,8 @@ gboolean WindowDragMotionHandler(GtkWidget* aWidget,
         static_cast<nsDragSession*>(dragService->StartDragSession(widget));
   }
   NS_ENSURE_TRUE(dragSession, FALSE);
+
+  dragSession->MarkAsActive();
 
   nsDragSession::AutoEventLoop loop(dragSession);
   if (!dragSession->ScheduleMotionEvent(
@@ -9889,6 +9893,7 @@ void nsWindow::OnUnmap() {
       static auto sGtkDragCancel =
           (void (*)(GdkDragContext*))dlsym(RTLD_DEFAULT, "gtk_drag_cancel");
       if (sGtkDragCancel) {
+        LOGDRAG("nsWindow::OnUnmap() Drag cancel");
         sGtkDragCancel(mSourceDragContext);
         mSourceDragContext = nullptr;
       }
@@ -10021,4 +10026,63 @@ UniquePtr<WaylandSurfaceLock> nsWindow::LockSurface() {
 #else
   return nullptr;
 #endif
+}
+
+using GdkWaylandWindowExported = void (*)(GdkWindow* window, const char* handle,
+                                          gpointer user_data);
+
+RefPtr<nsWindow::ExportHandlePromise> nsWindow::ExportHandle() {
+  auto promise = MakeRefPtr<ExportHandlePromise::Private>(__func__);
+  auto* toplevel = GetToplevelGdkWindow();
+#ifdef MOZ_WAYLAND
+  if (GdkIsWaylandDisplay()) {
+    static auto sGdkWaylandWindowExportHandle = (gboolean(*)(
+        const GdkWindow*, GdkWaylandWindowExported, gpointer,
+        GDestroyNotify))dlsym(RTLD_DEFAULT, "gdk_wayland_window_export_handle");
+    if (!sGdkWaylandWindowExportHandle || !toplevel) {
+      promise->Reject(false, __func__);
+    }
+    const bool success = sGdkWaylandWindowExportHandle(
+        toplevel,
+        [](GdkWindow*, const char* handle, gpointer promise) {
+          // NOTE: This addrefs, the releaser destroys.
+          RefPtr self = static_cast<ExportHandlePromise::Private*>(promise);
+          self->Resolve(nsPrintfCString("wayland:%s", handle), __func__);
+        },
+        promise.get(),
+        [](gpointer promise) {
+          RefPtr self =
+              dont_AddRef(static_cast<ExportHandlePromise::Private*>(promise));
+          // NOTE: This gets ignored if not pending.
+          self->Reject(false, __func__);
+        });
+    if (success) {
+      // Transfer ownership to the callback.
+      promise.get()->AddRef();
+    } else {
+      promise->Reject(false, __func__);
+    }
+    return promise.forget();
+  }
+#endif
+#ifdef MOZ_X11
+  if (GdkIsX11Display()) {
+    promise->Resolve(
+        nsPrintfCString("x11:%lx", gdk_x11_window_get_xid(toplevel)), __func__);
+    return promise.forget();
+  }
+#endif
+  MOZ_ASSERT_UNREACHABLE("how?");
+  promise->Reject(false, __func__);
+  return promise.forget();
+}
+
+void nsWindow::UnexportHandle() {
+  static auto sGdkWaylandWindowUnexportHandle = (void (*)(GdkWindow*))dlsym(
+      RTLD_DEFAULT, "gdk_wayland_window_unexport_handle");
+  if (GdkIsWaylandDisplay() && sGdkWaylandWindowUnexportHandle) {
+    if (auto* toplevel = GetToplevelGdkWindow()) {
+      sGdkWaylandWindowUnexportHandle(toplevel);
+    }
+  }
 }

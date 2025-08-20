@@ -15,14 +15,12 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.annotation.ColorInt
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mozilla.components.compose.base.theme.AcornTheme
 import mozilla.components.compose.browser.toolbar.BrowserEditToolbar
+import mozilla.components.compose.browser.toolbar.R
 import mozilla.components.concept.toolbar.AutocompleteDelegate
 import mozilla.components.concept.toolbar.AutocompleteProvider
 import mozilla.components.concept.toolbar.AutocompleteResult
@@ -63,7 +62,6 @@ private const val LETTER_SPACING_SP = 0.5f
  * Sub-component of the [BrowserEditToolbar] responsible for displaying a text field that is
  * capable of inline autocompletion.
  */
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 @Suppress("LongMethod")
 internal fun InlineAutocompleteTextField(
@@ -138,6 +136,8 @@ internal fun InlineAutocompleteTextField(
     AndroidView(
         factory = { context ->
             InlineAutocompleteEditText(context).apply {
+                id = R.id.mozac_addressbar_search_query_input
+
                 imeOptions = EditorInfo.IME_ACTION_GO or
                     EditorInfo.IME_FLAG_NO_EXTRACT_UI or
                     EditorInfo.IME_FLAG_NO_FULLSCREEN

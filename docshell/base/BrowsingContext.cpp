@@ -277,7 +277,11 @@ LogModule* BrowsingContext::GetSyncLog() { return gBrowsingContextSyncLog; }
 
 /* static */
 already_AddRefed<BrowsingContext> BrowsingContext::Get(uint64_t aId) {
-  return do_AddRef(sBrowsingContexts->Get(aId));
+  if (sBrowsingContexts) {
+    return do_AddRef(sBrowsingContexts->Get(aId));
+  }
+
+  return nullptr;
 }
 
 /* static */
@@ -1182,7 +1186,11 @@ void BrowsingContext::SetOpener(BrowsingContext* aOpener) {
 }
 
 bool BrowsingContext::HasOpener() const {
-  return sBrowsingContexts->Contains(GetOpenerId());
+  if (sBrowsingContexts) {
+    return sBrowsingContexts->Contains(GetOpenerId());
+  }
+
+  return false;
 }
 
 bool BrowsingContext::AncestorsAreCurrent() const {
@@ -3770,9 +3778,7 @@ void BrowsingContext::AddDeprioritizedLoadRunner(nsIRunnable* aRunner) {
 
   RefPtr<DeprioritizedLoadRunner> runner = new DeprioritizedLoadRunner(aRunner);
   mDeprioritizedLoadRunner.insertBack(runner);
-  NS_DispatchToCurrentThreadQueue(
-      runner.forget(), StaticPrefs::page_load_deprioritization_period(),
-      EventQueuePriority::Idle);
+  NS_DispatchToCurrentThreadQueue(runner.forget(), EventQueuePriority::Low);
 }
 
 bool BrowsingContext::IsDynamic() const {
@@ -4199,27 +4205,6 @@ void BrowsingContext::LocationCreated(dom::Location* aLocation) {
 void BrowsingContext::ClearCachedValuesOfLocations() {
   for (dom::Location* loc = mLocations.getFirst(); loc; loc = loc->getNext()) {
     loc->ClearCachedValues();
-  }
-}
-
-void BrowsingContext::GetContiguousHistoryEntries(
-    SessionHistoryInfo& aActiveEntry, Navigation* aNavigation) {
-  MOZ_LOG(GetLog(), LogLevel::Verbose,
-          ("GetContiguousHistoryEntries for aNavigation=%p", aNavigation));
-  if (!aNavigation) {
-    return;
-  }
-  if (XRE_IsContentProcess()) {
-    MOZ_ASSERT(ContentChild::GetSingleton());
-    ContentChild::GetSingleton()->SendGetContiguousSessionHistoryInfos(
-        this,
-        [aActiveEntry, navigation = RefPtr(aNavigation)](auto aInfos) mutable {
-          navigation->InitializeHistoryEntries(aInfos, &aActiveEntry);
-        },
-        [](auto aReason) { MOZ_ASSERT(false, "How did this happen?"); });
-  } else {
-    auto infos = Canonical()->GetContiguousSessionHistoryInfos();
-    aNavigation->InitializeHistoryEntries(infos, &aActiveEntry);
   }
 }
 

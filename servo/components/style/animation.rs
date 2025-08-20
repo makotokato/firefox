@@ -97,9 +97,7 @@ impl PropertyAnimation {
     /// Update the given animation at a given point of progress.
     fn calculate_value(&self, progress: f64) -> AnimationValue {
         let progress = self.timing_function_output(progress);
-        let procedure = Procedure::Interpolate {
-            progress,
-        };
+        let procedure = Procedure::Interpolate { progress };
         self.from.animate(&self.to, procedure).unwrap_or_else(|()| {
             // Fall back to discrete interpolation
             if progress < 0.5 {
@@ -613,15 +611,15 @@ impl Animation {
             AnimationState::Canceled => return,
         };
 
-        if total_progress < 0. &&
-            self.fill_mode != AnimationFillMode::Backwards &&
-            self.fill_mode != AnimationFillMode::Both
+        if total_progress < 0.
+            && self.fill_mode != AnimationFillMode::Backwards
+            && self.fill_mode != AnimationFillMode::Both
         {
             return;
         }
-        if self.has_ended(now) &&
-            self.fill_mode != AnimationFillMode::Forwards &&
-            self.fill_mode != AnimationFillMode::Both
+        if self.has_ended(now)
+            && self.fill_mode != AnimationFillMode::Forwards
+            && self.fill_mode != AnimationFillMode::Both
         {
             return;
         }
@@ -698,9 +696,9 @@ impl Animation {
             AnimationDirection::Reverse => 1. - prev_keyframe.start_percentage as f64,
             _ => unreachable!(),
         };
-        let progress_between_keyframes = (total_progress -
-            direction_aware_prev_keyframe_start_percentage) /
-            percentage_between_keyframes;
+        let progress_between_keyframes = (total_progress
+            - direction_aware_prev_keyframe_start_percentage)
+            / percentage_between_keyframes;
 
         for (from, to) in prev_keyframe.values.iter().zip(next_keyframe.values.iter()) {
             let animation = PropertyAnimation {
@@ -790,15 +788,15 @@ impl Transition {
         //      time of the style change event, times the reversing shortening
         //      factor of the old transition
         //    2.  1 minus the reversing shortening factor of the old transition."
-        let transition_progress = ((now - replaced_transition.start_time) /
-            (replaced_transition.property_animation.duration))
+        let transition_progress = ((now - replaced_transition.start_time)
+            / (replaced_transition.property_animation.duration))
             .min(1.0)
             .max(0.0);
         let timing_function_output = replaced_animation.timing_function_output(transition_progress);
         let old_reversing_shortening_factor = replaced_transition.reversing_shortening_factor;
-        self.reversing_shortening_factor = ((timing_function_output *
-            old_reversing_shortening_factor) +
-            (1.0 - old_reversing_shortening_factor))
+        self.reversing_shortening_factor = ((timing_function_output
+            * old_reversing_shortening_factor)
+            + (1.0 - old_reversing_shortening_factor))
             .abs()
             .min(1.0)
             .max(0.0);
@@ -842,7 +840,8 @@ impl Transition {
     /// Update the given animation at a given point of progress.
     pub fn calculate_value(&self, time: f64) -> AnimationValue {
         let progress = (time - self.start_time) / (self.property_animation.duration);
-        self.property_animation.calculate_value(progress.clamp(0.0, 1.0))
+        self.property_animation
+            .calculate_value(progress.clamp(0.0, 1.0))
     }
 }
 
@@ -881,6 +880,7 @@ impl ElementAnimationSet {
     }
 
     /// Apply all active animations.
+    #[cfg(feature = "servo")]
     pub fn apply_active_animations(
         &self,
         context: &SharedStyleContext,
@@ -920,8 +920,9 @@ impl ElementAnimationSet {
     pub fn needs_animation_ticks(&self) -> bool {
         self.animations
             .iter()
-            .any(|animation| animation.state.needs_to_be_ticked()) ||
-            self.transitions
+            .any(|animation| animation.state.needs_to_be_ticked())
+            || self
+                .transitions
                 .iter()
                 .any(|transition| transition.state.needs_to_be_ticked())
     }
@@ -931,8 +932,9 @@ impl ElementAnimationSet {
         self.animations
             .iter()
             .filter(|animation| animation.state.needs_to_be_ticked())
-            .count() +
-            self.transitions
+            .count()
+            + self
+                .transitions
                 .iter()
                 .filter(|transition| transition.state.needs_to_be_ticked())
                 .count()
@@ -974,6 +976,7 @@ impl ElementAnimationSet {
 
     /// Update our transitions given a new style, canceling or starting new animations
     /// when appropriate.
+    #[cfg(feature = "servo")]
     pub fn update_transitions_for_new_style(
         &mut self,
         might_need_transitions_update: bool,
@@ -1032,7 +1035,8 @@ impl ElementAnimationSet {
         new_style: &Arc<ComputedValues>,
     ) {
         let style = new_style.get_ui();
-        let allow_discrete = style.transition_behavior_mod(index) == TransitionBehavior::AllowDiscrete;
+        let allow_discrete =
+            style.transition_behavior_mod(index) == TransitionBehavior::AllowDiscrete;
 
         if !property_declaration_id.is_animatable()
             || (!allow_discrete && property_declaration_id.is_discrete_animatable())
@@ -1062,7 +1066,11 @@ impl ElementAnimationSet {
         // not be able to interpolate some values. In that case we would fall back to
         // discrete interpolation, so we need to abort if `transition-behavior` doesn't
         // allow discrete transitions.
-        if !allow_discrete && !property_animation.from.interpolable_with(&property_animation.to) {
+        if !allow_discrete
+            && !property_animation
+                .from
+                .interpolable_with(&property_animation.to)
+        {
             return;
         }
 

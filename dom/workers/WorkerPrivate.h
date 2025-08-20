@@ -8,6 +8,8 @@
 #define mozilla_dom_workers_workerprivate_h__
 
 #include <bitset>
+
+#include "FontVisibilityProvider.h"
 #include "MainThreadUtils.h"
 #include "ScriptLoader.h"
 #include "js/ContextOptions.h"
@@ -22,6 +24,7 @@
 #include "mozilla/OriginTrials.h"
 #include "mozilla/RelativeTimeline.h"
 #include "mozilla/Result.h"
+#include "mozilla/StaticPrefs_extensions.h"
 #include "mozilla/StorageAccess.h"
 #include "mozilla/ThreadBound.h"
 #include "mozilla/ThreadSafeWeakPtr.h"
@@ -29,21 +32,20 @@
 #include "mozilla/UseCounter.h"
 #include "mozilla/dom/ClientSource.h"
 #include "mozilla/dom/FlippedOnce.h"
+#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/dom/PRemoteWorkerNonLifeCycleOpControllerChild.h"
 #include "mozilla/dom/RemoteWorkerTypes.h"
 #include "mozilla/dom/Timeout.h"
-#include "mozilla/dom/quota/CheckedUnsafePtr.h"
 #include "mozilla/dom/Worker.h"
 #include "mozilla/dom/WorkerBinding.h"
 #include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/dom/WorkerLoadInfo.h"
 #include "mozilla/dom/WorkerStatus.h"
+#include "mozilla/dom/quota/CheckedUnsafePtr.h"
 #include "mozilla/dom/workerinternals/JSSettings.h"
 #include "mozilla/dom/workerinternals/Queue.h"
-#include "mozilla/dom/JSExecutionManager.h"
 #include "mozilla/ipc/Endpoint.h"
 #include "mozilla/net/NeckoChannelParams.h"
-#include "mozilla/StaticPrefs_extensions.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
 #include "nsIContentPolicy.h"
@@ -146,7 +148,8 @@ nsString ComputeWorkerPrivateId();
 
 class WorkerPrivate final
     : public RelativeTimeline,
-      public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
+      public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>>,
+      public FontVisibilityProvider {
  public:
   // Callback invoked on the parent thread when the worker's cancellation is
   // about to be requested.  This covers both calls to
@@ -233,6 +236,8 @@ class WorkerPrivate final
   };
 
   NS_INLINE_DECL_REFCOUNTING(WorkerPrivate)
+
+  FONT_VISIBILITY_PROVIDER_IMPL
 
   static already_AddRefed<WorkerPrivate> Constructor(
       JSContext* aCx, const nsAString& aScriptURL, bool aIsChromeWorker,
@@ -1019,8 +1024,6 @@ class WorkerPrivate final
 
   bool IsWatchedByDevTools() const { return mLoadInfo.mWatchedByDevTools; }
 
-  bool ShouldResistFingerprinting(RFPTarget aTarget) const;
-
   const Maybe<RFPTargetSet>& GetOverriddenFingerprintingSettings() const {
     return mLoadInfo.mOverriddenFingerprintingSettings;
   }
@@ -1713,6 +1716,8 @@ class WorkerPrivate final
   bool hasNotifiedStorageKeyUsed{false};
 
   RefPtr<WorkerParentRef> mParentRef;
+
+  FontVisibility mFontVisibility;
 };
 
 class AutoSyncLoopHolder {

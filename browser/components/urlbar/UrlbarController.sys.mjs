@@ -7,6 +7,7 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  ExtensionUtils: "resource://gre/modules/ExtensionUtils.sys.mjs",
   Interactions: "moz-src:///browser/components/places/Interactions.sys.mjs",
   ProviderSemanticHistorySearch:
     "resource:///modules/UrlbarProviderSemanticHistorySearch.sys.mjs",
@@ -711,9 +712,7 @@ export class UrlbarController {
   #focusOnUnifiedSearchButton() {
     this.input.setUnifiedSearchButtonAvailability(true);
 
-    const switcher = this.input.document.getElementById(
-      "urlbar-searchmode-switcher"
-    );
+    const switcher = this.input.querySelector(".searchmode-switcher");
     // Set tabindex to be focusable.
     switcher.setAttribute("tabindex", "-1");
     // Remove blur listener to avoid closing urlbar view panel.
@@ -1022,7 +1021,9 @@ class TelemetryEvent {
       browserWindow.isBlankPageURL(browserWindow.gBrowser.currentURI.spec)
     ) {
       sap = "urlbar_newtab";
-    } else if (browserWindow.gBrowser.currentURI.schemeIs("moz-extension")) {
+    } else if (
+      lazy.ExtensionUtils.isExtensionUrl(browserWindow.gBrowser.currentURI)
+    ) {
       sap = "urlbar_addonpage";
     }
 
@@ -1494,10 +1495,11 @@ class TelemetryEvent {
     if (!element) {
       return "none";
     }
-    if (element.dataset.command == "help") {
-      return result?.type == lazy.UrlbarUtils.RESULT_TYPE.TIP
-        ? "tiphelp"
-        : "help";
+    if (
+      element.dataset.command == "help" ||
+      element.dataset.l10nName == "learn-more-link"
+    ) {
+      return "help";
     }
     if (element.dataset.command == "dismiss") {
       return "block";

@@ -30,15 +30,29 @@ ipprotection-feature-introduction-button-secondary-no-thanks = No thanks
 
 ##
 
-ipprotection-connection-status-on = VPN on
-ipprotection-connection-status-off = VPN off
+# The panel status card has a header and a connection time displayed under it when the VPN is on.
+# Variables:
+#   $time (String) - The amount of time connected to the proxy as HH:MM:SS (hours, minutes, seconds).
+ipprotection-connection-status-on =
+  .label = VPN on
+  .description = { $time }
+
+ipprotection-connection-status-off =
+  .label = VPN off
+
+# When VPN is toggled on
 ipprotection-toggle-active =
   .aria-label = Turn VPN off
+  .title = Toggle set to VPN on
+# When VPN is toggled off
 ipprotection-toggle-inactive =
   .aria-label = Turn VPN on
+  .title = Toggle set to VPN off
 
 # Location refers to the VPN server geographical position.
-ipprotection-location-title = Location
+ipprotection-location-title =
+  .label = Location
+  .title = Location selected based on fastest server
 
 upgrade-vpn-title = Get peace of mind with full-device protection
 upgrade-vpn-paragraph = Protect yourself beyond the browser with <a data-l10n-name="learn-more-vpn">{ -mozilla-vpn-brand-name }</a>. Customize your VPN location, set site-specific locations, and enjoy enhanced security whether you’re at home or on public Wi-Fi.
@@ -51,3 +65,11 @@ sign-in-vpn = Next
 active-subscription-vpn-title = Finish setting up { -mozilla-vpn-brand-name }
 active-subscription-vpn-message = Download it and install the extension to unlock your upgrade.
 get-vpn-button = Download
+
+## Messages and errors
+
+ipprotection-message-generic-error =
+  .heading = Couldn’t connect to VPN
+  .message = Try again in a few minutes.
+
+##

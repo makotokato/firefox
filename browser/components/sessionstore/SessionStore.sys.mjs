@@ -950,6 +950,16 @@ export var SessionStore = {
   },
 
   /**
+   * Convert tab state into a saved group tab state. Used to convert a
+   * closed tab group into a saved tab group.
+   *
+   * @param {TabState} tabState closed tab state
+   */
+  formatTabStateForSavedGroup(tab) {
+    return SessionStoreInternal._formatTabStateForSavedGroup(tab);
+  },
+
+  /**
    * Validates that a state object matches the schema
    * defined in browser/components/sessionstore/session.schema.json
    *
@@ -1145,31 +1155,13 @@ var SessionStoreInternal = {
   _closedObjectsChanged: false,
 
   // A promise resolved once initialization is complete
-  _deferredInitialized: (function () {
-    let deferred = {};
-
-    deferred.promise = new Promise((resolve, reject) => {
-      deferred.resolve = resolve;
-      deferred.reject = reject;
-    });
-
-    return deferred;
-  })(),
+  _deferredInitialized: Promise.withResolvers(),
 
   // Whether session has been initialized
   _sessionInitialized: false,
 
   // A promise resolved once all windows are restored.
-  _deferredAllWindowsRestored: (function () {
-    let deferred = {};
-
-    deferred.promise = new Promise((resolve, reject) => {
-      deferred.resolve = resolve;
-      deferred.reject = reject;
-    });
-
-    return deferred;
-  })(),
+  _deferredAllWindowsRestored: Promise.withResolvers(),
 
   get promiseAllWindowsRestored() {
     return this._deferredAllWindowsRestored.promise;

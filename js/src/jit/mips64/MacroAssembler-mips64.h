@@ -134,6 +134,12 @@ class MacroAssemblerMIPS64 : public MacroAssemblerMIPSShared {
                           Label* overflow);
   void ma_addPtrTestCarry(Condition cond, Register rd, Register rs, ImmWord imm,
                           Label* overflow);
+  void ma_addPtrTestSigned(Condition cond, Register rd, Register rj,
+                           Register rk, Label* taken);
+  void ma_addPtrTestSigned(Condition cond, Register rd, Register rj, Imm32 imm,
+                           Label* taken);
+  void ma_addPtrTestSigned(Condition cond, Register rd, Register rj,
+                           ImmWord imm, Label* taken);
   // subtract
   void ma_dsubu(Register rd, Register rs, Imm32 imm);
   void ma_dsubu(Register rd, Register rs);
@@ -329,15 +335,9 @@ class MacroAssemblerMIPS64Compat : public MacroAssemblerMIPS64 {
     ma_push(ScratchRegister);
   }
   void push(Register reg) { ma_push(reg); }
-  void push(FloatRegister reg) {
-    MOZ_ASSERT(reg.isDouble(), "float32 and simd128 not supported");
-    ma_push(reg);
-  }
+  void push(FloatRegister reg) { ma_push(reg); }
   void pop(Register reg) { ma_pop(reg); }
-  void pop(FloatRegister reg) {
-    MOZ_ASSERT(reg.isDouble(), "float32 and simd128 not supported");
-    ma_pop(reg);
-  }
+  void pop(FloatRegister reg) { ma_pop(reg); }
 
   // Emit a branch that can be toggled to a non-operation. On MIPS64 we use
   // "andi" instruction to toggle the branch.

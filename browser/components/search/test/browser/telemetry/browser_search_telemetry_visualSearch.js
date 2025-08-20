@@ -4,7 +4,13 @@
 "use strict";
 
 // Telemetry test for the visual search content context menu item, the one
-// labeled "Search Image with {engine}".
+// labeled "Search Image with {engine}". Also checks that the search config
+// property `excludePartnerCodeFromTelemetry` is respected when recording
+// telemetry.
+
+ChromeUtils.defineESModuleGetters(this, {
+  EngineURL: "moz-src:///toolkit/components/search/SearchEngine.sys.mjs",
+});
 
 // Expected source and action recorded by `BrowserSearchTelemetry`.
 const EXPECTED_TELEMETRY_SOURCE = "contextmenu_visual";
@@ -14,11 +20,11 @@ const CONTEXT_MENU_ID = "contentAreaContextMenu";
 const VISUAL_SEARCH_MENUITEM_ID = "context-visual-search";
 
 const TEST_PAGE_URL =
-  "http://mochi.test:8888/browser/browser/components/search/test/browser/telemetry/browser_contentContextMenu.xhtml";
+  "http://mochi.test:8888/browser/browser/components/search/test/browser/browser_contentContextMenu.xhtml";
 
-// The URL of the image in the test page.
+// The URL of the primary image in the test page.
 const IMAGE_URL =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAATklEQVRYhe3SIQ4AIBADwf7/04elBAtrVlSduGnSTDJ7cuT1PQJwwO+Hl7sAGAA07gjAAfgIBeAAoHFHAA7ARygABwCNOwJwAD5CATRgAYXh+kypw86nAAAAAElFTkSuQmCC";
+  "http://mochi.test:8888/browser/browser/components/search/test/browser/ctxmenu-image.png";
 
 const ENGINE_ID = "visual-search";
 const ENGINE_NAME = "Visual Search Engine";
@@ -28,6 +34,8 @@ const ENGINE_URL =
     "https://example.org"
   ) + "searchTelemetry.html";
 
+const NONCONFIG_ENGINE_NAME = "Nonconfig Visual Search Engine";
+
 const SEARCH_CONFIG = [
   {
     recordType: "engine",
@@ -35,7 +43,7 @@ const SEARCH_CONFIG = [
     base: {
       name: ENGINE_NAME,
       // Make sure the engine has a partner code so we can verify it's excluded
-      // from telemetry.
+      // from telemetry due to `excludePartnerCodeFromTelemetry` below.
       partnerCode: "test-partner-code",
       urls: {
         visualSearch: {
@@ -51,6 +59,7 @@ const SEARCH_CONFIG = [
             },
           ],
           searchTermParamName: "url",
+          excludePartnerCodeFromTelemetry: true,
         },
       },
     },
@@ -104,6 +113,7 @@ add_setup(async function () {
     ],
   });
 
+  // Install the primary visual search engine via the search config.
   SearchSERPTelemetry.overrideSearchTelemetryForTests(TEST_PROVIDER_INFO);
   await SearchTestUtils.updateRemoteSettingsConfig(SEARCH_CONFIG);
   await waitForIdle();
@@ -118,6 +128,23 @@ add_setup(async function () {
     engine.partnerCode,
     "test-partner-code",
     "Sanity check: The visual search engine should have a partner code"
+  );
+
+  // Install another engine such that it's not a config engine but has a visual
+  // search URL. Currently there's no better way to do this than to modify its
+  // URLs after the fact. This must happen after setting the config above
+  // because that causes all engines to be reloaded.
+  await SearchTestUtils.installSearchExtension({
+    name: NONCONFIG_ENGINE_NAME,
+    search_url: "https://example.com/nonconfig-engine",
+    search_url_get_params: "q={searchTerms}",
+  });
+  let nonconfigEngine = Services.search.getEngineByName(NONCONFIG_ENGINE_NAME);
+  nonconfigEngine.wrappedJSObject._urls.push(
+    new EngineURL({
+      type: SearchUtils.URL_TYPE.VISUAL_SEARCH,
+      template: "https://example.com/nonconfig-engine-visual",
+    })
   );
 
   // Enable local telemetry recording for the duration of the tests.
@@ -141,7 +168,7 @@ add_task(async function nonPrivateWindow() {
 
   await openMenuAndClickItem();
 
-  // sap.impression_counts labeled counter
+  // `sap.impression_counts` labeled counter
   Assert.equal(
     Glean.sapImpressionCounts.contextmenuVisual[ENGINE_ID].testGetValue(),
     1,
@@ -223,7 +250,7 @@ async function doPrivateWindowTest(shouldRecordCounts) {
 
   let expectedCount = shouldRecordCounts ? 1 : null;
 
-  // sap.impression_counts labeled counter
+  // `sap.impression_counts` labeled counter
   Assert.equal(
     Glean.sapImpressionCounts.contextmenuVisual[ENGINE_ID].testGetValue(),
     expectedCount,
@@ -298,6 +325,47 @@ async function doPrivateWindowTest(shouldRecordCounts) {
   await SpecialPowers.popPrefEnv();
 }
 
+// For nonconfig engines with visual search URLs, the `sap.impression_counts`
+// labeled counter should be recorded with "none" as the engine name.
+add_task(async function nonconfigEngine() {
+  Services.fog.testResetFOG();
+
+  let engine = Services.search.getEngineByName(NONCONFIG_ENGINE_NAME);
+  Assert.ok(
+    engine.wrappedJSObject.getURLOfType(SearchUtils.URL_TYPE.VISUAL_SEARCH),
+    "Sanity check: Nonconfig engine has a visual search URL"
+  );
+
+  // Make the nonconfig engine the default so that it handles visual searches.
+  let previousEngine = await Services.search.getDefault();
+  await Services.search.setDefault(
+    engine,
+    Ci.nsISearchService.CHANGE_REASON_UNKNOWN
+  );
+
+  await openAndCheckMenu({
+    shouldBeShown: true,
+    expectedEngineNameInLabel: NONCONFIG_ENGINE_NAME,
+  });
+  await closeMenu();
+
+  Assert.equal(
+    Glean.sapImpressionCounts.contextmenuVisual.none.testGetValue(),
+    1,
+    "impressionCounts.contextmenuVisual should be recorded once with name 'none'"
+  );
+  Assert.equal(
+    Glean.sapImpressionCounts.contextmenuVisual[engine.id].testGetValue(),
+    null,
+    "impressionCounts.contextmenuVisual should not be recorded with the engine ID"
+  );
+
+  await Services.search.setDefault(
+    previousEngine,
+    Ci.nsISearchService.CHANGE_REASON_UNKNOWN
+  );
+});
+
 async function openMenuAndClickItem({
   expectedEngineNameInLabel = ENGINE_NAME,
   expectedBaseUrl = ENGINE_URL,
@@ -337,11 +405,23 @@ async function openMenuAndClickItem({
 }
 
 async function openAndCheckMenu({
-  win,
   shouldBeShown,
   expectedEngineNameInLabel,
+  win = window,
   selector = "#image",
 }) {
+  let selectorMatches = await SpecialPowers.spawn(
+    win.gBrowser.selectedBrowser,
+    [selector],
+    async function (sel) {
+      return !!content.document.querySelector(sel);
+    }
+  );
+  Assert.ok(
+    selectorMatches,
+    "Sanity check: selector should match an element in the page: " + selector
+  );
+
   let menu = win.document.getElementById(CONTEXT_MENU_ID);
   let popupPromise = BrowserTestUtils.waitForEvent(menu, "popupshown");
 
@@ -364,12 +444,29 @@ async function openAndCheckMenu({
     "The visual search menuitem should be shown as expected"
   );
   if (shouldBeShown) {
+    let expectedLabel = `Search Image with ${expectedEngineNameInLabel}`;
+    await TestUtils.waitForCondition(
+      () => item.label == expectedLabel,
+      "Waiting for expected label to be set on item: " + expectedLabel
+    );
     Assert.equal(
       item.label,
-      `Search Image with ${expectedEngineNameInLabel}`,
+      expectedLabel,
       "The visual search menuitem should have the expected label"
     );
   }
 
   return { menu, item };
+}
+
+async function closeMenu({ win = window } = {}) {
+  let menu = win.document.getElementById(CONTEXT_MENU_ID);
+  let popupPromise = BrowserTestUtils.waitForEvent(menu, "popuphidden");
+
+  info("Closing context menu");
+  menu.hidePopup();
+
+  info("Waiting for context menu to close");
+  await popupPromise;
+  info("Context menu closed");
 }

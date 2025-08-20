@@ -95,7 +95,6 @@ export class ContentSection extends React.PureComponent {
       enabledWidgets,
       pocketRegion,
       mayHaveInferredPersonalization,
-      mayHaveRecentSaves,
       mayHaveWeather,
       mayHaveTrendingSearch,
       mayHaveWidgets,
@@ -114,7 +113,6 @@ export class ContentSection extends React.PureComponent {
       weatherEnabled,
       trendingSearchEnabled,
       showInferredPersonalizationEnabled,
-      showRecentSavesEnabled,
       topSitesRowsCount,
     } = enabledSections;
     const { timerEnabled, listsEnabled } = enabledWidgets;
@@ -139,7 +137,7 @@ export class ContentSection extends React.PureComponent {
         {mayHaveWidgets && (
           <div className="widgets-section">
             <div className="category-header">
-              <h2>Widgets</h2>
+              <h2 data-l10n-id="newtab-custom-widget-section-title"></h2>
             </div>
             <div className="settings-widgets">
               {/* Weather */}
@@ -151,7 +149,7 @@ export class ContentSection extends React.PureComponent {
                     onToggle={this.onPreferenceSelect}
                     data-preference="showWeather"
                     data-eventSource="WEATHER"
-                    label="Weather"
+                    data-l10n-id="newtab-custom-widget-weather-toggle"
                   />
                 </div>
               )}
@@ -165,7 +163,7 @@ export class ContentSection extends React.PureComponent {
                     onToggle={this.onPreferenceSelect}
                     data-preference="widgets.lists.enabled"
                     data-eventSource="WIDGET_LISTS"
-                    label="Lists"
+                    data-l10n-id="newtab-custom-widget-lists-toggle"
                   />
                 </div>
               )}
@@ -179,7 +177,7 @@ export class ContentSection extends React.PureComponent {
                     onToggle={this.onPreferenceSelect}
                     data-preference="widgets.focusTimer.enabled"
                     data-eventSource="WIDGET_TIMER"
-                    label="Timer"
+                    data-l10n-id="newtab-custom-widget-timer-toggle"
                   />
                 </div>
               )}
@@ -193,7 +191,7 @@ export class ContentSection extends React.PureComponent {
                     onToggle={this.onPreferenceSelect}
                     data-preference="trendingSearch.enabled"
                     data-eventSource="TRENDING_SEARCH"
-                    label="Trending Searches"
+                    data-l10n-id="newtab-custom-widget-trending-search-toggle"
                   />
                 </div>
               )}
@@ -294,9 +292,7 @@ export class ContentSection extends React.PureComponent {
                 data-l10n-id="newtab-custom-stories-toggle"
               >
                 <div slot="nested">
-                  {(mayHaveRecentSaves ||
-                    mayHaveInferredPersonalization ||
-                    mayHaveTopicSections) && (
+                  {(mayHaveInferredPersonalization || mayHaveTopicSections) && (
                     <div className="more-info-pocket-wrapper">
                       <div
                         className="more-information"
@@ -325,25 +321,6 @@ export class ContentSection extends React.PureComponent {
                         )}
                         {mayHaveTopicSections && (
                           <SectionsMgmtPanel exitEventFired={exitEventFired} />
-                        )}
-                        {mayHaveRecentSaves && (
-                          <div className="check-wrapper" role="presentation">
-                            <input
-                              id="recent-saves-pocket"
-                              className="customize-menu-checkbox"
-                              disabled={!pocketEnabled}
-                              checked={showRecentSavesEnabled}
-                              type="checkbox"
-                              onChange={this.onPreferenceSelect}
-                              data-preference="showRecentSaves"
-                              data-eventSource="POCKET_RECENT_SAVES"
-                            />
-                            <label
-                              className="customize-menu-checkbox-label"
-                              htmlFor="recent-saves-pocket"
-                              data-l10n-id="newtab-custom-pocket-show-recent-saves"
-                            />
-                          </div>
                         )}
                       </div>
                     </div>

@@ -6,6 +6,8 @@
 
 #include "WMFMediaDataEncoder.h"
 
+#include <comdef.h>
+
 #include "ImageContainer.h"
 #include "ImageConversion.h"
 #include "MFTEncoder.h"
@@ -13,10 +15,12 @@
 #include "TimeUnits.h"
 #include "WMFDataEncoderUtils.h"
 #include "WMFUtils.h"
-#include <comdef.h>
 #include "mozilla/WindowsProcessMitigations.h"
+#include "mozilla/dom/WebCodecsUtils.h"
 
 namespace mozilla {
+
+#define AUTO_MARKER(desc) AUTO_WEBCODECS_MARKER("WMFMediaDataEncoder", desc)
 
 using InitPromise = MediaDataEncoder::InitPromise;
 using EncodePromise = MediaDataEncoder::EncodePromise;
@@ -105,6 +109,8 @@ RefPtr<InitPromise> WMFMediaDataEncoder::ProcessInit() {
   MOZ_ASSERT(!mEncoder,
              "Should not initialize encoder again without shutting down");
 
+  auto cleanup = MakeScopeExit([&] { mIsHardwareAccelerated = false; });
+
   if (!wmf::MediaFoundationInitializer::HasInitialized()) {
     return InitPromise::CreateAndReject(
         MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
@@ -130,6 +136,9 @@ RefPtr<InitPromise> WMFMediaDataEncoder::ProcessInit() {
 
   mEncoder = std::move(encoder);
   InitializeConfigData();
+  mIsHardwareAccelerated = mEncoder->IsHardwareAccelerated();
+  WMF_ENC_LOGD("HW accelerated: %s", mIsHardwareAccelerated ? "yes" : "no");
+  cleanup.release();
   return InitPromise::CreateAndResolve(TrackInfo::TrackType::kVideoTrack,
                                        __func__);
 }
@@ -274,6 +283,8 @@ already_AddRefed<IMFSample> WMFMediaDataEncoder::ConvertToNV12InputSample(
     RefPtr<const VideoData>&& aData) {
   AssertOnTaskQueue();
   MOZ_ASSERT(mEncoder);
+
+  AUTO_MARKER("::ConvertToNV12InputSample");
 
   size_t mBufferLength = 0;
 
@@ -484,5 +495,7 @@ bool WMFMediaDataEncoder::WriteFrameData(RefPtr<MediaRawData>& aDest,
   PodCopy(writer->Data(), aSrc.Data(), aSrc.Length());
   return true;
 }
+
+#undef AUTO_MARKER
 
 }  // namespace mozilla

@@ -204,7 +204,7 @@ class NativeLayerWayland : public NativeLayer {
   void SetSurfaceIsFlipped(bool aIsFlipped) override;
   bool SurfaceIsFlipped() override;
 
-  void RenderLayer(int aScale);
+  void RenderLayer(double aScale);
   // TODO
   GpuFence* GetGpuFence() override { return nullptr; }
 
@@ -257,7 +257,7 @@ class NativeLayerWayland : public NativeLayer {
 
  protected:
   void SetScalelocked(const widget::WaylandSurfaceLock& aProofOfLock,
-                      int aScale);
+                      double aScale);
   void UpdateLayerPlacementLocked(
       const widget::WaylandSurfaceLock& aProofOfLock);
   virtual bool CommitFrontBufferToScreenLocked(
@@ -285,6 +285,7 @@ class NativeLayerWayland : public NativeLayer {
 
   RefPtr<widget::WaylandSurface> mSurface;
 
+  // Final buffer which we attach to WaylandSurface
   RefPtr<widget::WaylandBuffer> mFrontBuffer;
 
   const bool mIsOpaque = false;
@@ -302,7 +303,7 @@ class NativeLayerWayland : public NativeLayer {
   Maybe<gfx::IntRect> mClipRect;
   Maybe<gfx::RoundedRect> mRoundedClipRect;
   gfx::SamplingFilter mSamplingFilter = gfx::SamplingFilter::POINT;
-  int mScale = 1;
+  double mScale = 1.0f;
   LayerState mState{};
   bool mSurfaceIsFlipped = false;
   bool mIsHDR = false;
@@ -347,8 +348,7 @@ class NativeLayerWaylandRender final : public NativeLayerWayland {
 
   void DiscardBackbuffersLocked(const widget::WaylandSurfaceLock& aProofOfLock,
                                 bool aForce) override;
-  void HandlePartialUpdateLocked(
-      const widget::WaylandSurfaceLock& aProofOfLock);
+  void ReadBackFrontBuffer(const widget::WaylandSurfaceLock& aProofOfLock);
   bool CommitFrontBufferToScreenLocked(
       const widget::WaylandSurfaceLock& aProofOfLock) override;
 
@@ -372,6 +372,7 @@ class NativeLayerWaylandExternal final : public NativeLayerWayland {
   void NotifySurfaceReady() override {};
   void AttachExternalImage(wr::RenderTextureHost* aExternalImage) override;
   bool IsFrontBufferChanged() override;
+  RefPtr<DMABufSurface> GetSurface();
 
   NativeLayerWaylandExternal(NativeLayerRootWayland* aRootLayer,
                              bool aIsOpaque);

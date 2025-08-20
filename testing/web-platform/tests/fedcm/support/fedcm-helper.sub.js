@@ -143,7 +143,23 @@ export function fedcm_test(test_func, test_name) {
     } catch (e) {
       // Failure is not critical; it just might slow down tests.
     }
+    t.add_cleanup(async () => {
+      // A fedcm_test may affect the connected account set from the IDPs, so invoke
+      // disconnect as a cleanup.
+      try {
+        await IdentityCredential.disconnect(disconnect_options(""));
+      } catch (ex) {
+        // Failure is not critical, test state is reset.
+      }
+      try {
+        await IdentityCredential.disconnect(alt_disconnect_options(""));
+      } catch (ex) {
+        // Failure is not critical, test state is reset.
+      }
+    });
 
+    await mark_signed_in();
+    await mark_signed_in(alt_manifest_origin);
     await set_fedcm_cookie();
     await set_alt_fedcm_cookie();
     await test_func(t);
@@ -198,7 +214,11 @@ export function fedcm_get_dialog_type_promise(t) {
         resolve(type);
       } catch (ex) {
         if (String(ex).includes("no such alert")) {
-          t.step_timeout(helper, 100);
+          if (t) {
+            t.step_timeout(helper, 100);
+          } else{
+            window.setTimeout(helper, 100);
+          }
         } else {
           reject(ex);
         }

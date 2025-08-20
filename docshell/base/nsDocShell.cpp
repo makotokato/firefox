@@ -8220,9 +8220,7 @@ nsresult nsDocShell::SetupNewViewer(nsIDocumentViewer* aNewViewer,
 
   mDocumentViewer = aNewViewer;
 
-  nsCOMPtr<nsIWidget> widget;
-  NS_ENSURE_SUCCESS(GetMainWidget(getter_AddRefs(widget)), NS_ERROR_FAILURE);
-
+  nsCOMPtr<nsIWidget> widget = GetMainWidget();
   LayoutDeviceIntRect bounds(x, y, cx, cy);
 
   mDocumentViewer->SetNavigationTiming(mTiming);
@@ -8922,6 +8920,7 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
   // origin skip handling otherwise
   if (!IsSamePrincipalForDocumentURI(doc->NodePrincipal(), mCurrentURI,
                                      newURI)) {
+    aSameDocument = false;
     MOZ_LOG(gSHLog, LogLevel::Debug,
             ("nsDocShell[%p]: possible violation of the same origin policy "
              "during same document navigation",
@@ -8929,7 +8928,8 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
     return NS_OK;
   }
 
-  if (nsCOMPtr<nsPIDOMWindowInner> window = doc->GetInnerWindow()) {
+  if (nsCOMPtr<nsPIDOMWindowInner> window = doc->GetInnerWindow();
+      window && !aState.mHistoryNavBetweenSameDoc) {
     // https://html.spec.whatwg.org/#navigate-fragid
     // Step 1
     if (RefPtr<Navigation> navigation = window->Navigation()) {
@@ -9685,7 +9685,8 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
       !document->IsInitialDocument() &&
       !NS_IsAboutBlankAllowQueryAndFragment(document->GetDocumentURI()) &&
       NS_IsFetchScheme(aLoadState->URI()) &&
-      document->NodePrincipal()->Subsumes(aLoadState->TriggeringPrincipal())) {
+      document->NodePrincipal()->EqualsConsideringDomain(
+          aLoadState->TriggeringPrincipal())) {
     if (nsCOMPtr<nsPIDOMWindowInner> window = document->GetInnerWindow()) {
       // Step 21.1
       if (RefPtr<Navigation> navigation = window->Navigation()) {
@@ -12518,9 +12519,10 @@ void nsDocShell::MaybeFireTraverseHistory(nsDocShellLoadState* aLoadState) {
   }
 
   BrowsingContext* browsingContext = GetBrowsingContext();
-  if (!browsingContext || !browsingContext->IsTop()) {
+  if (!browsingContext || browsingContext->IsTop()) {
     return;
   }
+
   if (!mActiveEntry) {
     return;
   }
@@ -14270,8 +14272,13 @@ void nsDocShell::MoveLoadingToActiveEntry(bool aExpired, uint32_t aCacheKey,
         GetWindow()->GetCurrentInnerWindow()) {
       if (RefPtr navigation =
               GetWindow()->GetCurrentInnerWindow()->Navigation()) {
-        mBrowsingContext->GetContiguousHistoryEntries(*mActiveEntry,
-                                                      navigation);
+        // When the current load is finished the currently loading entry will be
+        // last in the list of entries. This works because we've created
+        // `mContiguousEntries` to only hold the entries up to the old current
+        // entry.
+        loadingEntry->mContiguousEntries.AppendElement(*mActiveEntry);
+        navigation->InitializeHistoryEntries(loadingEntry->mContiguousEntries,
+                                             mActiveEntry.get());
       }
     }
   }

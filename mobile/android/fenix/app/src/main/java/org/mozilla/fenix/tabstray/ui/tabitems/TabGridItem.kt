@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.tabstray.ui.tabitems
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +11,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,8 +37,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,13 +66,15 @@ import org.mozilla.fenix.compose.TabThumbnail
 import org.mozilla.fenix.tabstray.TabsTrayTestTag
 import org.mozilla.fenix.tabstray.ext.toDisplayTitle
 import org.mozilla.fenix.theme.FirefoxTheme
+import kotlin.math.max
+
+private val ThumbnailPadding = 4.dp
 
 /**
  * Tab grid item used to display a tab that supports clicks,
  * long clicks, multiple selection, and media controls.
  *
  * @param tab The given tab to be render as view a grid item.
- * @param thumbnailSize Size of tab's thumbnail.
  * @param isSelected Indicates if the item should be render as selected.
  * @param multiSelectionEnabled Indicates if the item should be render with multi selection options,
  * enabled.
@@ -85,7 +89,6 @@ import org.mozilla.fenix.theme.FirefoxTheme
 @Composable
 fun TabGridItem(
     tab: TabSessionState,
-    thumbnailSize: Int,
     isSelected: Boolean = false,
     multiSelectionEnabled: Boolean = false,
     multiSelectionSelected: Boolean = false,
@@ -95,28 +98,34 @@ fun TabGridItem(
     onClick: (tab: TabSessionState) -> Unit,
     onLongClick: ((tab: TabSessionState) -> Unit)? = null,
 ) {
-    SwipeToDismissBox2(
-        state = swipeState,
-        backgroundContent = {},
-        onItemDismiss = {
-            onCloseClick(tab)
-        },
-    ) {
-        TabContent(
-            tab = tab,
-            thumbnailSize = thumbnailSize,
-            isSelected = isSelected,
-            multiSelectionEnabled = multiSelectionEnabled,
-            multiSelectionSelected = multiSelectionSelected,
-            shouldClickListen = shouldClickListen,
-            onCloseClick = onCloseClick,
-            onClick = onClick,
-            onLongClick = onLongClick,
-        )
+    BoxWithConstraints {
+        val density = LocalDensity.current
+        val thumbnailWidth = this.constraints.minWidth - with(density) { 2 * ThumbnailPadding.roundToPx() }
+        val thumbnailHeight = (thumbnailWidth / gridItemAspectRatio).toInt()
+        val thumbnailSize = max(thumbnailWidth, thumbnailHeight)
+
+        SwipeToDismissBox2(
+            state = swipeState,
+            backgroundContent = {},
+            onItemDismiss = {
+                onCloseClick(tab)
+            },
+        ) {
+            TabContent(
+                tab = tab,
+                thumbnailSize = thumbnailSize,
+                isSelected = isSelected,
+                multiSelectionEnabled = multiSelectionEnabled,
+                multiSelectionSelected = multiSelectionSelected,
+                shouldClickListen = shouldClickListen,
+                onCloseClick = onCloseClick,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+        }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Suppress("LongMethod")
 @Composable
 private fun TabContent(
@@ -164,7 +173,6 @@ private fun TabContent(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(gridItemAspectRatio)
                 .clip(tabContentCardShape)
                 .then(clickableModifier)
                 .semantics {
@@ -182,7 +190,7 @@ private fun TabContent(
             ),
         ) {
             Column(
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier.padding(ThumbnailPadding),
             ) {
                 Row(
                     modifier = Modifier
@@ -270,17 +278,20 @@ private fun TabContent(
                     }
                 }
 
+                val thumbnailShape = RoundedCornerShape(
+                    topStart = 4.dp,
+                    topEnd = 4.dp,
+                    bottomStart = 12.dp,
+                    bottomEnd = 12.dp,
+                )
                 Card(
-                    shape = RoundedCornerShape(
-                        topStart = 4.dp,
-                        topEnd = 4.dp,
-                        bottomStart = 12.dp,
-                        bottomEnd = 12.dp,
-                    ),
+                    modifier = Modifier.aspectRatio(gridItemAspectRatio),
+                    shape = thumbnailShape,
                 ) {
                     Thumbnail(
                         tab = tab,
                         size = thumbnailSize,
+                        shape = thumbnailShape,
                     )
                 }
             }
@@ -312,11 +323,13 @@ private fun clickableColor() = when (isSystemInDarkTheme()) {
  *
  * @param tab Tab, containing the thumbnail to be displayed.
  * @param size Size of the thumbnail.
+ * @param shape Shape of the thumbnail card.
  */
 @Composable
 private fun Thumbnail(
     tab: TabSessionState,
     size: Int,
+    shape: Shape,
 ) {
     Box(
         modifier = Modifier
@@ -330,6 +343,7 @@ private fun Thumbnail(
             tab = tab,
             size = size,
             modifier = Modifier.fillMaxSize(),
+            shape = shape,
         )
     }
 }

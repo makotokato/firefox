@@ -3,17 +3,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/WebGPUBinding.h"
 #include "Adapter.h"
 
 #include <algorithm>
+
 #include "Device.h"
 #include "Instance.h"
 #include "SupportedFeatures.h"
 #include "SupportedLimits.h"
 #include "ipc/WebGPUChild.h"
+#include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/WebGPUBinding.h"
 #include "mozilla/webgpu/ffi/wgpu.h"
 
 namespace mozilla::webgpu {
@@ -537,7 +538,7 @@ already_AddRefed<dom::Promise> Adapter::RequestDevice(
           (void)featureStr;
           nsPrintfCString msg(
               "`GPUAdapter.requestDevice`: '%s' was requested in "
-              "`requiredFeatures`, but it is not supported by Firefox."
+              "`requiredFeatures`, but it is not supported by Firefox. "
               "Follow <%s> for updates.",
               featureStr.get(), status.value.unimplemented.bugzillaUrlAscii);
           promise->MaybeRejectWithTypeError(msg);

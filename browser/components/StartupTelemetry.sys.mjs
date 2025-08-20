@@ -13,7 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   OsEnvironment: "resource://gre/modules/OsEnvironment.sys.mjs",
   PlacesDBUtils: "resource://gre/modules/PlacesDBUtils.sys.mjs",
-  ShellService: "resource:///modules/ShellService.sys.mjs",
+  ShellService: "moz-src:///browser/components/shell/ShellService.sys.mjs",
   TelemetryReportingPolicy:
     "resource://gre/modules/TelemetryReportingPolicy.sys.mjs",
   UsageReporting: "resource://gre/modules/UsageReporting.sys.mjs",
@@ -45,7 +45,7 @@ export let StartupTelemetry = {
     for (let task of tasks) {
       ChromeUtils.idleDispatch(async () => {
         if (!Services.startup.shuttingDown) {
-          let startTime = Cu.now();
+          let startTime = ChromeUtils.now();
           try {
             await task();
           } catch (ex) {
@@ -358,6 +358,15 @@ export let StartupTelemetry = {
     _checkGPCPref();
   },
 
+  // check if the launcher was used to open firefox
+  isUsingLauncher() {
+    if (Services.env.get("FIREFOX_LAUNCHED_BY_DESKTOP_LAUNCHER") == "TRUE") {
+      return true;
+    }
+
+    return false;
+  },
+
   async pinningStatus() {
     let shellService = Cc["@mozilla.org/browser/shell-service;1"].getService(
       Ci.nsIWindowsShellService
@@ -403,6 +412,8 @@ export let StartupTelemetry = {
         classification = "Autostart";
       } else if (shortcut) {
         classification = "OtherShortcut";
+      } else if (this.isUsingLauncher()) {
+        classification = "DesktopLauncher";
       } else {
         classification = "Other";
       }

@@ -171,6 +171,8 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleFont {
   mozilla::StyleMathVariant mMathVariant;
   // math-style support (used for MathML displaystyle)
   mozilla::StyleMathStyle mMathStyle;
+  // math-shift support (used for MathML cramped mode)
+  mozilla::StyleMathShift mMathShift;
 
   // Was mLanguage set based on a lang attribute in the document?
   bool mExplicitLanguage = false;
@@ -1187,6 +1189,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleTextReset {
   mozilla::StyleInitialLetter mInitialLetter;
   mozilla::StyleColor mTextDecorationColor;
   mozilla::StyleTextDecorationLength mTextDecorationThickness;
+  mozilla::StyleTextDecorationTrim mTextDecorationTrim;
 };
 
 struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleText {
@@ -1245,6 +1248,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleText {
 
   mozilla::StyleTextWrapStyle mTextWrapStyle =
       mozilla::StyleTextWrapStyle::Auto;
+
+  mozilla::StyleTextAutospace mTextAutospace =
+      mozilla::StyleTextAutospace::NORMAL;
 
   char16_t TextSecurityMaskChar() const {
     switch (mWebkitTextSecurity) {
@@ -2120,15 +2126,12 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleUI {
   mozilla::StyleMozTheme mMozTheme;
 
  private:
-  mozilla::StyleUserInput mUserInput;
   mozilla::StyleUserFocus mUserFocus;
   mozilla::StylePointerEvents mPointerEvents;
   mozilla::StyleCursor mCursor;
 
  public:
   bool IsInert() const { return mInert == mozilla::StyleInert::Inert; }
-
-  mozilla::StyleUserInput UserInput() const { return mUserInput; }
 
   mozilla::StyleUserFocus UserFocus() const {
     return IsInert() ? mozilla::StyleUserFocus::None : mUserFocus;

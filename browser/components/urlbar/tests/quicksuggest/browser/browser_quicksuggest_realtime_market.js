@@ -64,6 +64,37 @@ const TEST_MERINO_MULTI = [
   },
 ];
 
+const TEST_MERINO_NO_SPECIFIC_IMAGE = [
+  {
+    provider: "polygon",
+    is_sponsored: false,
+    score: 0,
+    custom_details: {
+      polygon: {
+        values: [
+          {
+            image_url: "",
+            query: "VOO stock",
+            name: "Vanguard S&P 500 ETF",
+            ticker: "VOO",
+            todays_change_perc: "-0.11",
+            last_price: "$559.44 USD",
+            index: "S&P 500",
+          },
+          {
+            query: "QQQ stock",
+            name: "Invesco QQQ Trust",
+            ticker: "QQQ",
+            todays_change_perc: "+1.53",
+            last_price: "$539.78 USD",
+            index: "NASDAQ",
+          },
+        ],
+      },
+    },
+  },
+];
+
 add_setup(async function () {
   await SearchTestUtils.installSearchExtension({}, { setAsDefault: true });
   registerCleanupFunction(async () => {
@@ -75,6 +106,7 @@ add_task(async function ui_single() {
   const cleanup = await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: TEST_MERINO_SINGLE,
     prefs: [
+      ["market.featureGate", true],
       ["suggest.market", true],
       ["suggest.quicksuggest.nonsponsored", true],
     ],
@@ -84,7 +116,17 @@ add_task(async function ui_single() {
     window,
     value: "only match the Merino suggestion",
   });
-  let { element } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
+  let { element, result } = await UrlbarTestUtils.getDetailsOfResultAt(
+    window,
+    1
+  );
+  Assert.ok(result.isBestMatch);
+  Assert.ok(result.hideRowLabel);
+
+  Assert.ok(
+    element.row.querySelector(".urlbarView-button-result-menu"),
+    "The row should have a result menu button"
+  );
 
   let items = element.row.querySelectorAll(".urlbarView-dynamic-market-item");
   Assert.equal(items.length, 1);
@@ -105,6 +147,7 @@ add_task(async function ui_multi() {
   const cleanup = await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: TEST_MERINO_MULTI,
     prefs: [
+      ["market.featureGate", true],
       ["suggest.market", true],
       ["suggest.quicksuggest.nonsponsored", true],
     ],
@@ -138,6 +181,7 @@ add_task(async function activate() {
   const cleanup = await QuickSuggestTestUtils.ensureQuickSuggestInit({
     merinoSuggestions: TEST_MERINO_MULTI,
     prefs: [
+      ["market.featureGate", true],
       ["suggest.market", true],
       ["suggest.quicksuggest.nonsponsored", true],
     ],
@@ -171,6 +215,36 @@ add_task(async function activate() {
     await UrlbarTestUtils.promisePopupClose(window);
   }
 
+  await cleanup();
+});
+
+add_task(async function no_image() {
+  const cleanup = await QuickSuggestTestUtils.ensureQuickSuggestInit({
+    merinoSuggestions: TEST_MERINO_NO_SPECIFIC_IMAGE,
+    prefs: [
+      ["market.featureGate", true],
+      ["suggest.market", true],
+      ["suggest.quicksuggest.nonsponsored", true],
+    ],
+  });
+
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    value: "only match the Merino suggestion",
+  });
+  let { element } = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
+  let items = element.row.querySelectorAll(".urlbarView-dynamic-market-item");
+
+  for (let item of items) {
+    let image = item.querySelector(".urlbarView-market-image");
+    Assert.equal(
+      image.getAttribute("src"),
+      "chrome://global/skin/icons/search-glass.svg",
+      "Image is fallbacked"
+    );
+  }
+
+  await UrlbarTestUtils.promisePopupClose(window);
   await cleanup();
 });
 

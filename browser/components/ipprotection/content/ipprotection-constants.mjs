@@ -10,4 +10,28 @@ export const LINKS = Object.freeze({
     "https://www.mozilla.org/products/vpn/?utm_medium=firefox-desktop&utm_source=freevpnpilot&utm_content=vpnpanel",
   SIGNIN_URL:
     "https://accounts.firefox.com?entrypoint=desktop-fx-vpn&service=sync&entrypoint_experiment=fx-vpn-pilot&entrypoint_variation=alpha",
+  SUPPORT_URL: "https://support.mozilla.org/kb/use-ip-concealment-in-firefox",
+});
+
+export const FLAGS = Object.freeze({
+  us: "chrome://browser/content/ipprotection/assets/flags/us.png",
+});
+
+export const ERRORS = Object.freeze({
+  GENERIC: "generic-error",
+});
+
+export const SIGNIN_DATA = Object.freeze({
+  where: "tab",
+  entrypoint: "desktop-fx-vpn",
+  autoClose: false,
+  extraParams: {
+    service: "sync",
+    entrypoint_experiment: "fx-vpn-pilot",
+    entrypoint_variation: "alpha",
+    utm_source: "callout",
+    utm_campaign: "fx-vpn-pilot",
+    utm_medium: "firefox-desktop",
+    utm_term: "fx-vpn-pilot-panel-button",
+  },
 });

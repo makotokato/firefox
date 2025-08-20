@@ -16,6 +16,7 @@
 #include "mozilla/glean/AntitrackingMetrics.h"
 #include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
+#include "mozilla/net/CookieServiceParent.h"
 #include "mozilla/StoragePrincipalHelper.h"
 
 #include "nsCOMPtr.h"
@@ -29,6 +30,7 @@
 #include "nsICacheStorageService.h"
 #include "nsICacheStorage.h"
 #include "nsICacheEntry.h"
+#include "nsICookieNotification.h"
 #include "nsICryptoHash.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsIHttpHeaderVisitor.h"
@@ -280,6 +282,122 @@ class CookieVisitor final {
  private:
   nsTArray<nsCString> mCookieHeaders;
 };
+
+class CookieObserver final : public nsIObserver,
+                             public nsSupportsWeakReference {
+ public:
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+
+  static already_AddRefed<CookieObserver> Create(bool aPrivateBrowsing);
+
+  void StealChanges(nsTArray<CookieChange>& aChanges) {
+    aChanges.SwapElements(mChanges);
+  }
+
+ private:
+  CookieObserver() = default;
+  ~CookieObserver() = default;
+
+  nsTArray<CookieChange> mChanges;
+};
+
+NS_IMPL_ISUPPORTS(CookieObserver, nsIObserver, nsISupportsWeakReference)
+
+// static
+already_AddRefed<CookieObserver> CookieObserver::Create(bool aPrivateBrowsing) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  RefPtr<CookieObserver> observer = new CookieObserver();
+
+  nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+  if (NS_WARN_IF(!os)) {
+    return nullptr;
+  }
+
+  nsresult rv = os->AddObserver(
+      observer, aPrivateBrowsing ? "private-cookie-changed" : "cookie-changed",
+      true);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return nullptr;
+  }
+
+  return observer.forget();
+}
+
+NS_IMETHODIMP
+CookieObserver::Observe(nsISupports* aSubject, const char* aTopic,
+                        const char16_t* aData) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  nsCOMPtr<nsICookieNotification> notification = do_QueryInterface(aSubject);
+  NS_ENSURE_TRUE(notification, NS_ERROR_FAILURE);
+
+  nsCOMPtr<nsICookie> xpcCookie;
+  nsresult rv = notification->GetCookie(getter_AddRefs(xpcCookie));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  if (!xpcCookie) {
+    return NS_OK;
+  }
+
+  const Cookie& cookie = xpcCookie->AsCookie();
+
+  nsICookieNotification::Action action = notification->GetAction();
+
+  switch (action) {
+    case nsICookieNotification::COOKIE_DELETED:
+      mChanges.AppendElement(CookieChange{/* added */ false, cookie.ToIPC(),
+                                          cookie.OriginAttributesRef()});
+      break;
+
+    case nsICookieNotification::COOKIE_ADDED:
+      [[fallthrough]];
+    case nsICookieNotification::COOKIE_CHANGED:
+      mChanges.AppendElement(CookieChange{/* added */ true, cookie.ToIPC(),
+                                          cookie.OriginAttributesRef()});
+      break;
+
+    default:
+      // We don't care about other actions because none of them can be
+      // triggered by the Set-Cookie header.
+      break;
+  }
+
+  return NS_OK;
+}
+
+void MaybeInitializeCookieProcessingGuard(
+    nsHttpChannel* aChannel, CookieServiceParent::CookieProcessingGuard& aGuard,
+    RefPtr<CookieObserver>& aCookieObserver,
+    RefPtr<HttpChannelParent>& aHttpChannelParent) {
+  nsCOMPtr<nsIParentChannel> parentChannel;
+  NS_QueryNotificationCallbacks(aChannel, parentChannel);
+  aHttpChannelParent = do_QueryObject(parentChannel);
+  if (!aHttpChannelParent) {
+    return;
+  }
+
+  aCookieObserver = CookieObserver::Create(NS_UsePrivateBrowsing(aChannel));
+
+  PNeckoParent* neckoParent = aHttpChannelParent->Manager();
+  if (!neckoParent) {
+    return;
+  }
+
+  PCookieServiceParent* csParent =
+      LoneManagedOrNullAsserts(neckoParent->ManagedPCookieServiceParent());
+  CookieServiceParent* cookieServiceParent =
+      static_cast<CookieServiceParent*>(csParent);
+  if (!cookieServiceParent) {
+    return;
+  }
+
+  aGuard.Initialize(cookieServiceParent);
+}
+
 }  // unnamed namespace
 
 // We only treat 3xx responses as redirects if they have a Location header and
@@ -410,12 +528,9 @@ void nsHttpChannel::ReleaseMainThreadOnlyReferences() {
 
 nsresult nsHttpChannel::Init(nsIURI* uri, uint32_t caps, nsProxyInfo* proxyInfo,
                              uint32_t proxyResolveFlags, nsIURI* proxyURI,
-                             uint64_t channelId,
-                             ExtContentPolicyType aContentPolicyType,
-                             nsILoadInfo* aLoadInfo) {
-  nsresult rv =
-      HttpBaseChannel::Init(uri, caps, proxyInfo, proxyResolveFlags, proxyURI,
-                            channelId, aContentPolicyType, aLoadInfo);
+                             uint64_t channelId, nsILoadInfo* aLoadInfo) {
+  nsresult rv = HttpBaseChannel::Init(uri, caps, proxyInfo, proxyResolveFlags,
+                                      proxyURI, channelId, aLoadInfo);
   if (NS_FAILED(rv)) return rv;
 
   LOG1(("nsHttpChannel::Init [this=%p]\n", this));
@@ -464,7 +579,14 @@ nsresult nsHttpChannel::PrepareToConnect() {
   // notify "http-on-modify-request-before-cookies" observers
   gHttpHandler->OnModifyRequestBeforeCookies(this);
 
-  AddCookiesToRequest();
+  if (mStaleRevalidation) {
+    // This is a revalidating channel.
+    // The cookies (user set cookies + cookies from the cookeservice) are
+    // already copied to the request headers when opening this channel in
+    // PerformBackgroundCacheRevalidationNow().
+  } else {
+    AddCookiesToRequest();
+  }
 
 #if defined(XP_WIN) || defined(XP_MACOSX)
 
@@ -1067,13 +1189,29 @@ nsresult nsHttpChannel::HandleOverrideResponse() {
     return AsyncCall(&nsHttpChannel::HandleAsyncRedirect);
   }
 
-  // Handle Set-Cookie headers as if the response was from networking.
-  CookieVisitor cookieVisitor(mResponseHead.get());
-  SetCookieHeaders(cookieVisitor.CookieHeaders());
-  nsCOMPtr<nsIParentChannel> parentChannel;
-  NS_QueryNotificationCallbacks(this, parentChannel);
-  if (RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel)) {
-    httpParent->SetCookieHeaders(cookieVisitor.CookieHeaders());
+  // This block parses the cookie header, collects any cookie changes,
+  // and sends them to the parent actor.
+  {
+    RefPtr<HttpChannelParent> httpParent;
+    RefPtr<CookieObserver> cookieObserver;
+
+    CookieServiceParent::CookieProcessingGuard cookieProcessingGuard;
+    MaybeInitializeCookieProcessingGuard(this, cookieProcessingGuard,
+                                         cookieObserver, httpParent);
+
+    // Handle Set-Cookie headers as if the response was from networking.
+    CookieVisitor cookieVisitor(mResponseHead.get());
+    SetCookieHeaders(cookieVisitor.CookieHeaders());
+
+    if (cookieObserver) {
+      nsTArray<CookieChange> cookieChanges;
+      cookieObserver->StealChanges(cookieChanges);
+
+      if (!cookieChanges.IsEmpty()) {
+        MOZ_ASSERT(httpParent);
+        httpParent->SetCookieChanges(std::move(cookieChanges));
+      }
+    }
   }
 
   rv = ProcessSecurityHeaders();
@@ -2783,17 +2921,33 @@ nsresult nsHttpChannel::ContinueProcessResponse1(
   // for Strict-Transport-Security.
   if (!(mTransaction && mTransaction->ProxyConnectFailed()) &&
       (httpStatus != 407)) {
-    CookieVisitor cookieVisitor(mResponseHead.get());
-    SetCookieHeaders(cookieVisitor.CookieHeaders());
-    if (!LoadOnStartRequestCalled()) {
-      // This can only happen when a range request is created again in
-      // nsHttpChannel::ContinueOnStopRequest. If OnStartRequest is already
-      // called, we shouldn't call SetCookieHeaders.
-      nsCOMPtr<nsIParentChannel> parentChannel;
-      NS_QueryNotificationCallbacks(this, parentChannel);
-      if (RefPtr<HttpChannelParent> httpParent =
-              do_QueryObject(parentChannel)) {
-        httpParent->SetCookieHeaders(cookieVisitor.CookieHeaders());
+    // This block parses the cookie header, collects any cookie changes,
+    // and sends them to the parent actor.
+    {
+      RefPtr<CookieObserver> cookieObserver;
+      RefPtr<HttpChannelParent> httpParent;
+      CookieServiceParent::CookieProcessingGuard cookieProcessingGuard;
+
+      if (!LoadOnStartRequestCalled()) {
+        // This can only happen when a range request is created again in
+        // nsHttpChannel::ContinueOnStopRequest. If OnStartRequest is already
+        // called, we shouldn't call SetCookieHeaders.
+
+        MaybeInitializeCookieProcessingGuard(this, cookieProcessingGuard,
+                                             cookieObserver, httpParent);
+      }
+
+      CookieVisitor cookieVisitor(mResponseHead.get());
+      SetCookieHeaders(cookieVisitor.CookieHeaders());
+
+      if (cookieObserver) {
+        nsTArray<CookieChange> cookieChanges;
+        cookieObserver->StealChanges(cookieChanges);
+
+        if (!cookieChanges.IsEmpty()) {
+          MOZ_ASSERT(httpParent);
+          httpParent->SetCookieChanges(std::move(cookieChanges));
+        }
       }
     }
 
@@ -4369,6 +4523,12 @@ nsresult nsHttpChannel::OpenCacheEntryInternal(bool isHttps) {
   mCacheOpenWithPriority = cacheEntryOpenFlags & nsICacheStorage::OPEN_PRIORITY;
   mCacheQueueSizeWhenOpen =
       CacheStorageService::CacheQueueSize(mCacheOpenWithPriority);
+
+  // If the browser is set to offline, or it doesn't have any active network
+  // interfaces then don't race, as it's unlikely the network would win :)
+  if (NS_IsOffline()) {
+    maybeRCWN = false;
+  }
 
   if ((mNetworkTriggerDelay || StaticPrefs::network_http_rcwn_enabled()) &&
       maybeRCWN && mAllowRCWN) {
@@ -6143,7 +6303,11 @@ nsresult nsHttpChannel::ContinueProcessRedirectionAfterFallback(nsresult rv) {
                              nullptr,  // aLoadGroup
                              nullptr,  // aCallbacks
                              nsIRequest::LOAD_NORMAL, ioService);
-  NS_ENSURE_SUCCESS(rv, rv);
+  // If this fails, it usually means that the URI was invalid. Treat this as if
+  // it were a CreateNewURI failure.
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return NS_ERROR_CORRUPTED_CONTENT;
+  }
 
   rv = SetupReplacementChannel(mRedirectURI, newChannel, !rewriteToGET,
                                redirectFlags);
@@ -6830,6 +6994,8 @@ nsHttpChannel::AsyncOpen(nsIStreamListener* aListener) {
   // Remember the cookie header that was set, if any
   nsAutoCString cookieHeader;
   if (NS_SUCCEEDED(mRequestHead.GetHeader(nsHttp::Cookie, cookieHeader))) {
+    // if this is a cache revalidaing channel (mIsStaleRevalidation), then this
+    // represents both user cookies and cookies from cookieService
     mUserSetCookieHeader = cookieHeader;
   }
 
@@ -8013,6 +8179,12 @@ nsHttpChannel::GetEssentialDomainCategory(nsCString& domain) {
 }
 
 nsresult nsHttpChannel::ProcessLNAActions() {
+  if (!mTransaction) {
+    // this could happen with rcwn enabled.
+    // We have hit network and have detected LNA, meanwhile cache won and reset
+    // the transaction in ReadFromCache
+    return NS_ERROR_LOCAL_NETWORK_ACCESS_DENIED;
+  }
   // Suspend to block any notification to the channel.
   // This will get resumed in
   // nsHttpChannel::OnPermissionPromptResult
@@ -8218,8 +8390,8 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
       mPeerAddr.ToAddrPortString(addrPort);
       nsILoadInfo::IPAddressSpace docAddressSpace =
           mPeerAddr.GetIpAddressSpace();
-      ExtContentPolicyType type = mLoadInfo->GetExternalContentPolicyType();
       mLoadInfo->SetIpAddressSpace(docAddressSpace);
+      ExtContentPolicyType type = mLoadInfo->GetExternalContentPolicyType();
       if (type == ExtContentPolicy::TYPE_DOCUMENT ||
           type == ExtContentPolicy::TYPE_SUBDOCUMENT) {
         RefPtr<mozilla::dom::BrowsingContext> bc;
@@ -8227,11 +8399,26 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
         if (bc) {
           bc->SetCurrentIPAddressSpace(docAddressSpace);
         }
+
+        if (mCacheEntry) {
+          // store the ipaddr information into the cache metadata entry
+          if (mPeerAddr.GetIpAddressSpace() !=
+              nsILoadInfo::IPAddressSpace::Unknown) {
+            uint16_t port;
+            mPeerAddr.GetPort(&port);
+            mCacheEntry->SetMetaDataElement("peer-ip-address",
+                                            mPeerAddr.ToString().get());
+            mCacheEntry->SetMetaDataElement("peer-port",
+                                            ToString(port).c_str());
+          }
+        }
       }
     }
 
     StoreResolvedByTRR(isTrr);
     StoreEchConfigUsed(echConfigUsed);
+  } else {  // !mTransaction
+    MaybeUpdateDocumentIPAddressSpaceFromCache();
   }
 
   if (!mCanceled && mTransaction &&
@@ -8319,6 +8506,39 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
 
   // No process change is needed, so continue on to ContinueOnStartRequest1.
   return ContinueOnStartRequest1(rv);
+}
+
+void nsHttpChannel::MaybeUpdateDocumentIPAddressSpaceFromCache() {
+  MOZ_ASSERT(mLoadInfo);
+  ExtContentPolicyType type = mLoadInfo->GetExternalContentPolicyType();
+
+  // Update the IPAddressSpace in the BrowsingContext only for main or sub
+  // document
+  if (type != ExtContentPolicy::TYPE_DOCUMENT &&
+      type != ExtContentPolicy::TYPE_SUBDOCUMENT) {
+    return;
+  }
+
+  RefPtr<mozilla::dom::BrowsingContext> bc;
+  mLoadInfo->GetTargetBrowsingContext(getter_AddRefs(bc));
+
+  if (!bc || !mCacheEntry) {
+    return;
+  }
+
+  nsAutoCString ipAddrStr, portStr;
+  mCacheEntry->GetMetaDataElement("peer-ip-address", getter_Copies(ipAddrStr));
+  mCacheEntry->GetMetaDataElement("peer-port", getter_Copies(portStr));
+
+  nsresult rv;
+  uint32_t port = portStr.ToInteger(&rv);
+
+  if (!ipAddrStr.IsEmpty() && NS_SUCCEEDED(rv)) {
+    NetAddr ipAddr;
+    rv = ipAddr.InitFromString(ipAddrStr, port);
+    NS_ENSURE_SUCCESS_VOID(rv);
+    bc->SetCurrentIPAddressSpace(ipAddr.GetIpAddressSpace());
+  }
 }
 
 nsresult nsHttpChannel::OnPermissionPromptResult(bool aGranted,
@@ -11376,14 +11596,12 @@ nsresult nsHttpChannel::RedirectToInterceptedChannel() {
       InterceptedHttpChannel::CreateForInterception(
           mChannelCreationTime, mChannelCreationTimestamp, mAsyncOpenTime);
 
-  ExtContentPolicyType type = mLoadInfo->GetExternalContentPolicyType();
-
   nsCOMPtr<nsILoadInfo> redirectLoadInfo =
       CloneLoadInfoForRedirect(mURI, nsIChannelEventSink::REDIRECT_INTERNAL);
 
   nsresult rv = intercepted->Init(
       mURI, mCaps, static_cast<nsProxyInfo*>(mProxyInfo.get()),
-      mProxyResolveFlags, mProxyURI, mChannelId, type, redirectLoadInfo);
+      mProxyResolveFlags, mProxyURI, mChannelId, redirectLoadInfo);
 
   rv = SetupReplacementChannel(mURI, intercepted, true,
                                nsIChannelEventSink::REDIRECT_INTERNAL);

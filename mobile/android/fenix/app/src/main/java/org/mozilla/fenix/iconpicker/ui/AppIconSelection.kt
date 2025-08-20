@@ -52,6 +52,7 @@ import org.mozilla.fenix.utils.Settings
 
 private val ListItemHeight = 56.dp
 private val AppIconSize = 40.dp
+private val AppIconPadding = 6.dp
 private val AppIconBorderWidth = 1.dp
 private val AppIconCornerRadius = 4.dp
 private val GroupHeaderHeight = 36.dp
@@ -72,6 +73,7 @@ fun AppIconSelection(
     groupedIconOptions: Map<IconGroupTitle, List<AppIcon>>,
     onAppIconSelected: (AppIcon) -> Unit,
 ) {
+    var currentAppIcon by remember { mutableStateOf(currentAppIcon) }
     var selectedAppIcon by remember { mutableStateOf<AppIcon?>(null) }
 
     LazyColumn(
@@ -110,7 +112,9 @@ fun AppIconSelection(
     selectedAppIcon?.let {
         RestartWarningDialog(
             onConfirm = {
+                currentAppIcon = it
                 onAppIconSelected(it)
+                selectedAppIcon = null
             },
             onDismiss = {
                 selectedAppIcon = null
@@ -214,7 +218,9 @@ fun AppIcon(
         Image(
             painter = painterResource(id = appIcon.iconForegroundId),
             contentDescription = null,
-            modifier = Modifier.size(iconSize),
+            modifier = Modifier
+                .size(iconSize)
+                .padding(AppIconPadding),
         )
     }
 }

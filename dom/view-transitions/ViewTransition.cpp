@@ -4,40 +4,49 @@
 
 #include "ViewTransition.h"
 
+#include "Units.h"
 #include "WindowRenderer.h"
-#include "mozilla/layers/WebRenderLayerManager.h"
-#include "mozilla/layers/RenderRootStateManager.h"
+#include "mozilla/AnimationEventDispatcher.h"
+#include "mozilla/EffectSet.h"
+#include "mozilla/ElementAnimationData.h"
+#include "mozilla/FlowMarkers.h"
+#include "mozilla/SVGIntegrationUtils.h"
+#include "mozilla/ServoStyleConsts.h"
+#include "mozilla/WritingModes.h"
 #include "mozilla/dom/BindContext.h"
-#include "mozilla/layers/WebRenderBridgeChild.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/DocumentTimeline.h"
 #include "mozilla/dom/Promise-inl.h"
 #include "mozilla/dom/ViewTransitionBinding.h"
 #include "mozilla/image/WebRenderImageProvider.h"
+#include "mozilla/layers/RenderRootStateManager.h"
+#include "mozilla/layers/WebRenderBridgeChild.h"
+#include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/webrender/WebRenderAPI.h"
-#include "mozilla/FlowMarkers.h"
-#include "mozilla/AnimationEventDispatcher.h"
-#include "mozilla/EffectSet.h"
-#include "mozilla/ElementAnimationData.h"
-#include "mozilla/ServoStyleConsts.h"
-#include "mozilla/SVGIntegrationUtils.h"
-#include "mozilla/WritingModes.h"
+#include "nsCanvasFrame.h"
 #include "nsDisplayList.h"
 #include "nsFrameState.h"
 #include "nsITimer.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
-#include "nsCanvasFrame.h"
 #include "nsString.h"
 #include "nsViewManager.h"
-#include "Units.h"
 
 namespace mozilla::dom {
 
 LazyLogModule gViewTransitionsLog("ViewTransitions");
 
-static void SetCaptured(nsIFrame* aFrame, bool aCaptured) {
+NS_DECLARE_FRAME_PROPERTY_RELEASABLE(ViewTransitionCaptureName, nsAtom)
+
+static void SetCaptured(nsIFrame* aFrame, bool aCaptured,
+                        nsAtom* aNameIfCaptured) {
   aFrame->AddOrRemoveStateBits(NS_FRAME_CAPTURED_IN_VIEW_TRANSITION, aCaptured);
+  if (aCaptured) {
+    aFrame->AddProperty(ViewTransitionCaptureName(),
+                        do_AddRef(aNameIfCaptured).take());
+  } else {
+    aFrame->RemoveProperty(ViewTransitionCaptureName());
+  }
   aFrame->InvalidateFrameSubtree();
   if (aFrame->Style()->IsRootElementStyle()) {
     aFrame->PresShell()->GetRootFrame()->InvalidateFrameSubtree();
@@ -261,6 +270,11 @@ struct ViewTransition::CapturedElement {
   // https://drafts.csswg.org/css-view-transitions-2/#captured-element-class-list
   StyleViewTransitionClass mClassList;
 
+  // If snapshots are very large, compute active rects to restrict their
+  // bounds, based on what's most likely visible during the transition.
+  Maybe<nsRect> mOldActiveRect;
+  Maybe<nsRect> mNewActiveRect;
+
   void CaptureClassList(StyleViewTransitionClass&& aClassList) {
     mClassList = std::move(aClassList);
   }
@@ -392,9 +406,7 @@ const wr::ImageKey* ViewTransition::GetImageKeyForCapturedFrame(
   MOZ_ASSERT(aFrame);
   MOZ_ASSERT(aFrame->HasAnyStateBits(NS_FRAME_CAPTURED_IN_VIEW_TRANSITION));
 
-  RefPtr<nsAtom> name = DocumentScopedTransitionNameForWithGenerator(
-      aFrame,
-      [this](Element* aElement) { return GetElementIdentifier(aElement); });
+  nsAtom* name = aFrame->GetProperty(ViewTransitionCaptureName());
   if (NS_WARN_IF(!name)) {
     return nullptr;
   }
@@ -1344,14 +1356,14 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
           SkipTransitionReason::DuplicateTransitionNameCapturingOldState);
       return false;
     }
-    SetCaptured(aFrame, true);
+    SetCaptured(aFrame, true, name.get());
     captureElements.AppendElement(std::make_pair(aFrame, std::move(name)));
     return true;
   });
 
   if (result) {
     for (auto& [f, name] : captureElements) {
-      SetCaptured(f, false);
+      SetCaptured(f, false, nullptr);
     }
     return result;
   }
@@ -1386,7 +1398,7 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureOldState() {
   }
 
   for (auto& [f, name] : captureElements) {
-    SetCaptured(f, false);
+    SetCaptured(f, false, nullptr);
   }
   return result;
 }
@@ -1419,7 +1431,7 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
       return MakeUnique<CapturedElement>();
     });
     if (!wasPresent) {
-      mNames.AppendElement(std::move(name));
+      mNames.AppendElement(name);
     }
     capturedElement->mNewElement = aFrame->GetContent()->AsElement();
     // Note: mInitialSnapshotContainingBlockSize should be the same as the
@@ -1438,7 +1450,7 @@ Maybe<SkipTransitionReason> ViewTransition::CaptureNewState() {
     // have to use the latest one.
     // https://drafts.csswg.org/css-view-transitions-2/#vt-class-algorithms
     capturedElement->CaptureClassList(DocumentScopedClassListFor(aFrame));
-    SetCaptured(aFrame, true);
+    SetCaptured(aFrame, true, name);
     return true;
   });
   return result;
@@ -1619,7 +1631,7 @@ void ViewTransition::ClearNamedElements() {
   for (auto& entry : mNamedElements) {
     if (auto* element = entry.GetData()->mNewElement.get()) {
       if (nsIFrame* f = element->GetPrimaryFrame()) {
-        SetCaptured(f, false);
+        SetCaptured(f, false, nullptr);
       }
     }
   }
@@ -1832,6 +1844,146 @@ already_AddRefed<nsAtom> ViewTransition::DocumentScopedTransitionNameFor(
 JSObject* ViewTransition::WrapObject(JSContext* aCx,
                                      JS::Handle<JSObject*> aGivenProto) {
   return ViewTransition_Binding::Wrap(aCx, this, aGivenProto);
+}
+
+static void ComputeActiveRect1D(nscoord aViewMin, nscoord aViewSize,
+                                nscoord& aCaptureMin, nscoord& aCaptureSize) {
+  nscoord captureMax = aCaptureMin + aCaptureSize;
+  nscoord viewMax = aViewMin + aViewSize;
+
+  nscoord min;
+  nscoord max;
+
+  if (aCaptureSize < aViewSize) {
+    // The snapshot area is small enough on this axis, don't clip it.
+    min = aCaptureMin;
+    max = min + aCaptureSize;
+  } else if (aViewMin < aCaptureMin) {
+    // The view is before the capture area. Restrict the cpature size while
+    // snaping it to the beginning of its range.
+    min = aCaptureMin;
+    max = min + aViewSize;
+  } else if (viewMax > captureMax) {
+    // The view is after the capture area. Restrict the cpature size while
+    // snaping it to the end of its range.
+    max = captureMax;
+    min = max - aViewSize;
+  } else {
+    // The snapshot area extends beyond the viewport on both sides,
+    // set it to the viewport.
+    min = aViewMin;
+    max = viewMax;
+  }
+
+  aCaptureMin = min;
+  aCaptureSize = max - min;
+}
+
+void ViewTransition::UpdateActiveRectForCapturedFrame(
+    nsIFrame* aCapturedFrame, const gfx::MatrixScales& aInheritedScale,
+    nsRect& aOutCaptureRect) {
+  nsAtom* name = aCapturedFrame->GetProperty(ViewTransitionCaptureName());
+  if (NS_WARN_IF(!name)) {
+    return;
+  }
+
+  auto* el = mNamedElements.Get(name);
+  if (NS_WARN_IF(!el)) {
+    return;
+  }
+
+  const bool isOld = mPhase < Phase::Animating;
+
+  // The active rect to update (old or new).
+  Maybe<nsRect>* activeRect;
+  if (isOld) {
+    activeRect = &el->mOldActiveRect;
+    // We don't rely on it, but as a sanity check, since we only capture
+    // the old state once so we aren't expecting it to already contain an
+    // active rect.
+    MOZ_ASSERT(activeRect->isNothing());
+  } else {
+    activeRect = &el->mNewActiveRect;
+  }
+
+  // Reset the active rect in case we early out and had previously
+  // updated it.
+  activeRect->reset();
+
+  auto presShell = aCapturedFrame->PresShell();
+  if (!presShell->IsVisualViewportSizeSet()) {
+    return;
+  }
+
+  nsPresContext* pc = aCapturedFrame->PresContext();
+
+  auto rootViewportSize = presShell->GetVisualViewportSize();
+  auto auPerDevPx = pc->AppUnitsPerDevPixel();
+  auto vvpSize = LayoutDeviceSize::FromAppUnits(rootViewportSize, auPerDevPx);
+  auto capSize =
+      LayoutDeviceSize::FromAppUnits(aOutCaptureRect.Size(), auPerDevPx);
+  capSize.width *= aInheritedScale.xScale;
+  capSize.height *= aInheritedScale.yScale;
+
+  // If the capture size is smaller than the visual viewport, it's a good
+  // indication that it is not unreasonably large, so we can early out.
+  if (capSize.width < vvpSize.width && capSize.height < vvpSize.height) {
+    return;
+  }
+
+  // viewport is relative to the root frame.
+  // auto rootViewportOrigin = presShell->GetVisualViewportOffset();
+  auto rootViewportOrigin = nsPoint(0, 0);
+  nsRect viewport = nsRect(rootViewportOrigin, rootViewportSize);
+
+  // Inflate the viewport rect to give a bit of extra headroom in case the user
+  // scrolls a bit during the transition or the transition has some motion to
+  // it. But at the same time we want to avoid the margin pushing the snapshot
+  // size over 4k pixels since that will cause WebRender to render it
+  // downscaled.
+  float scale = std::max(aInheritedScale.xScale, aInheritedScale.yScale);
+  nscoord margin = NSFloatPixelsToAppUnits(512.0 / scale, auPerDevPx);
+  nscoord maxSize = NSFloatPixelsToAppUnits(4096.0 / scale, auPerDevPx);
+  margin = std::min(
+      margin,
+      std::max(0, maxSize - std::max(viewport.width, viewport.height)) / 2);
+
+  viewport.Inflate(margin);
+
+  nsIFrame* rootFrame = pc->GetPresShell()->GetRootFrame();
+
+  const auto SUCCESS = nsLayoutUtils::TransformResult::TRANSFORM_SUCCEEDED;
+  if (!rootFrame || nsLayoutUtils::TransformRect(rootFrame, aCapturedFrame,
+                                                 viewport) != SUCCESS) {
+    return;
+  }
+  // viewport is now relative to aCapturedFrame.
+
+  ComputeActiveRect1D(viewport.x, viewport.width, aOutCaptureRect.x,
+                      aOutCaptureRect.width);
+  ComputeActiveRect1D(viewport.y, viewport.height, aOutCaptureRect.y,
+                      aOutCaptureRect.height);
+
+  // Store the active rect for later when we create the image items.
+  *activeRect = Some(aOutCaptureRect);
+}
+
+Maybe<nsRect> ViewTransition::GetOldActiveRect(nsAtom* aName) const {
+  auto* el = mNamedElements.Get(aName);
+  if (NS_WARN_IF(!el)) {
+    return Nothing();
+  }
+
+  return el->mOldActiveRect;
+}
+
+Maybe<nsRect> ViewTransition::GetNewActiveRect(nsAtom* aName) const {
+  auto* el = mNamedElements.Get(aName);
+  if (NS_WARN_IF(!el)) {
+    return Nothing();
+  }
+
+  return el->mNewActiveRect;
 }
 
 };  // namespace mozilla::dom
